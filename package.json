@@ -1,0 +1,24 @@
+{
+  "name": "stock-market-node-service",
+  "version": "1.0.0",
+  "description": "Node.js service for fetching real-time stock info using yahoo-finance2",
+  "main": "services/node_stock_service.js",
+  "scripts": {
+    "start": "node services/node_stock_service.js",
+    "test": "node services/node_stock_service.js AAPL",
+    "serve": "npx serve frontend -l 3000"
+  },
+  "keywords": [
+    "stock",
+    "finance",
+    "yahoo-finance",
+    "market-data"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "yahoo-finance2": "^2.4.3"
+  }
+}
+
+

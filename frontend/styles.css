@@ -1632,6 +1632,19 @@ input:hover #cursor,
   font-weight: 700;
   letter-spacing: 2px;
 }
+.developer-photo {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  border: 3px solid rgba(0, 45, 114, 0.12);
+  box-shadow: var(--shadow-1);
+}
+.dark .developer-photo {
+  border-color: rgba(255, 255, 255, 0.12);
+}
 .developer-info h3 {
   font-size: 24px;
   font-weight: 600;
