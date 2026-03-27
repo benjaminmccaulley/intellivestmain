@@ -16,7 +16,7 @@
   <header class="site-header">
     <div class="container header-inner">
       <a href="./index.html" class="brand">
-        <img src="./f9b61d2f-3423-4d0e-9168-bb3ad73c27ef.png" alt="Intellivest logo" class="brand-logo" />
+        <img src="./assets/logo.png" alt="Intellivest logo" class="brand-logo" />
         <div class="brand-text">
           <div class="brand-line">Intellivest</div>
           <div class="brand-sub">@ Texas A&M</div>
@@ -69,7 +69,7 @@
             type="text" 
             id="stockSearchInput" 
             class="stock-search-input"
-            placeholder="Search for a stock by ticker symbol or company name (e.g., AAPL, Apple, Microsoft)"
+            placeholder="Search any stock on Yahoo Finance (ticker or company name)"
             autocomplete="off"
           />
           <button id="searchStockBtn" class="btn primary">Search</button>
@@ -87,10 +87,9 @@
         </div>
         
         <div class="category-tabs">
-          <button class="category-tab active" data-category="most-active">Most Active</button>
-          <button class="category-tab" data-category="high-growth">High Growth</button>
-          <button class="category-tab" data-category="dividend">Dividend Stocks</button>
-          <button class="category-tab" data-category="outperform">Outperform S&P 500</button>
+          <button class="category-tab active" data-category="mining">Mining</button>
+          <button class="category-tab" data-category="healthcare">Healthcare</button>
+          <button class="category-tab" data-category="blue-chip">Blue-Chip / Large Cap</button>
         </div>
 
         <div id="categoryStocks" class="category-stocks-grid">
@@ -121,6 +120,8 @@
               <option value="NVDA">NVIDIA</option>
               <option value="META">Meta</option>
               <option value="TSLA">Tesla</option>
+              <option value="FCX">Freeport-McMoRan</option>
+              <option value="UNH">UnitedHealth</option>
             </datalist>
           </div>
           <div class="timeframe-selector">
@@ -185,7 +186,7 @@
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-brand">
-        <img src="./f9b61d2f-3423-4d0e-9168-bb3ad73c27ef.png" alt="Intellivest logo" class="footer-logo" />
+        <div class="brand-mark small">●</div>
         <div class="footer-text">
           <div class="footer-title">Intellivest @ Texas A&M</div>
           <div class="footer-tagline">Making financial literacy accessible to everyone, one person at a time.</div>
@@ -199,7 +200,7 @@
         </div>
         <div class="meta-block">
           <div class="meta-label">Developed by</div>
-          <div class="meta-text">Natalie Do, Denisse Aguilar, Teresa So, Monica Lin, Sahil Shah, Abhinav Chodimella, and Benjamin McCaulley</div>
+          <div class="meta-text">Natalie Do, Denisse Aguilar, Teresa So, Monica Lin, Sahil Shah, Abhinav Chodimella, and Aiden Schreier</div>
         </div>
         <div class="meta-block">
           <div class="meta-text">© <span id="year"></span> Intellivest</div>

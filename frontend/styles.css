@@ -57,13 +57,13 @@ body {
 
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
 .brand-logo { 
-  height: 60px; 
+  height: 34px; 
   width: auto; 
   display: block; 
+  filter: brightness(0) saturate(100%);
   object-fit: contain;
-  max-width: 200px;
 }
-.dark .brand-logo { filter: none; }
+.dark .brand-logo { filter: brightness(0) saturate(100%) invert(1); }
 .brand-logo:not([src]), .brand-logo[src=""], .brand-logo[src*="undefined"] {
   display: none;
 }
@@ -380,15 +380,6 @@ body {
   flex-shrink: 0;
   margin-top: 2px;
   display: block;
-}
-.footer-logo {
-  height: 40px;
-  width: auto;
-  display: block;
-  object-fit: contain;
-  flex-shrink: 0;
-  margin-top: 2px;
-  max-width: 150px;
 }
 .footer-text { display: grid; gap: 4px; }
 .footer-title { font-weight: 700; font-size: 18px; }
@@ -815,6 +806,60 @@ input:hover #cursor,
 }
 .search-error {
   color: #ef4444;
+}
+.search-results-header {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-700);
+  margin-bottom: 16px;
+}
+.search-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.search-results-grid .search-result-card {
+  cursor: pointer;
+  padding: 16px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.search-results-grid .search-result-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+.search-result-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.search-result-name {
+  font-size: 13px;
+  color: var(--ink-600);
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+.search-result-price {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink-900);
+  margin-bottom: 4px;
+}
+.search-result-change {
+  font-size: 13px;
+  font-weight: 600;
+}
+.search-result-change.positive { color: #10b981; }
+.search-result-change.negative { color: #ef4444; }
+.search-result-movement {
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.search-result-movement.positive { color: #10b981; }
+.search-result-movement.negative { color: #ef4444; }
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
 /* Stock Categories Section */
@@ -1631,19 +1676,6 @@ input:hover #cursor,
   font-size: 36px;
   font-weight: 700;
   letter-spacing: 2px;
-}
-.developer-photo {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: center top;
-  display: block;
-  border: 3px solid rgba(0, 45, 114, 0.12);
-  box-shadow: var(--shadow-1);
-}
-.dark .developer-photo {
-  border-color: rgba(255, 255, 255, 0.12);
 }
 .developer-info h3 {
   font-size: 24px;
