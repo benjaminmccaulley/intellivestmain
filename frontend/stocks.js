@@ -9,24 +9,45 @@ const STOCK_NAMES = {
 
 // Predefined category symbols (most active by sector - sorted by volume when displayed)
 const CATEGORY_SYMBOLS = {
-  mining: [
-    'FCX', 'NEM', 'GOLD', 'RIO', 'BHP', 'SCCO', 'CDE', 'HMY', 'NGD', 'KGC', 'AUY', 'BTG',
-    'GFI', 'AG', 'PAAS', 'HL', 'EXK', 'IAG', 'FNV', 'WPM', 'SSRM', 'MUX', 'OR', 'VALE'
+  financials: [
+    'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'AXP', 'USB', 'PNC', 'BK', 'TFC', 'COF', 'AIG', 'MET'
   ],
-  healthcare: [
-    'UNH', 'JNJ', 'PFE', 'ABT', 'TMO', 'MRK', 'LLY', 'BMY', 'AMGN', 'GILD', 'MDT', 'ABBV',
-    'DHR', 'SYK', 'ISRG', 'VRTX', 'REGN', 'MRNA', 'ILMN', 'DXCM', 'ZTS', 'CI', 'HUM', 'ELV'
+  energy: [
+    'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'KMI', 'HAL', 'DVN', 'BKR', 'FANG', 'APA', 'PXD'
   ],
-  'blue-chip': [
-    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'JPM', 'XOM', 'JNJ', 'WMT', 'PG', 'KO',
-    'HD', 'PEP', 'CVX', 'MCD', 'ABT', 'COST', 'CSCO', 'ACN', 'AVGO', 'ADBE', 'CRM', 'NEE'
+  industrials: [
+    'CAT', 'DE', 'UNP', 'UPS', 'RTX', 'LMT', 'GE', 'HON', 'BA', 'NOC', 'MMM', 'WM', 'ITW', 'ETN', 'PH', 'EMR'
+  ],
+  'consumer-discretionary': [
+    'AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'LOW', 'BKNG', 'TGT', 'MAR', 'CMG', 'RCL', 'GM', 'F', 'ROST', 'ORLY'
+  ],
+  'consumer-staples': [
+    'WMT', 'PG', 'KO', 'PEP', 'COST', 'PM', 'MO', 'CL', 'KMB', 'MDLZ', 'GIS', 'KHC', 'KR', 'HSY', 'ADM', 'EL'
   ]
 };
+
+// #region agent log
+function debugLog(runId, hypothesisId, location, message, data) {
+  fetch('http://127.0.0.1:7358/ingest/6cde8b47-2e94-4e16-8946-d652773068d7', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '69af8c' },
+    body: JSON.stringify({
+      sessionId: '69af8c',
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+}
+// #endregion
 
 let stockChart = null;
 let currentSymbol = 'AAPL';
 let currentTimeframe = '1D';
-let currentCategory = 'mining';
+let currentCategory = 'financials';
 
 // API Cache - stores responses with configurable TTL
 const apiCache = {
@@ -238,18 +259,27 @@ async function fetchSP500Return(useCache = true) {
 }
 
 // Fetch stock data with caching
-async function fetchStockData(symbol, useCache = true) {
+async function fetchStockData(symbol, useCache = true, options = {}) {
+  const includeDetails = options.includeDetails !== false;
+  const startedAt = performance.now();
+  // #region agent log
+  debugLog('baseline', 'H1', 'stocks.js:fetchStockData', 'start', { symbol, useCache, includeDetails });
+  // #endregion
+  const cacheKey = `stock_${symbol}_${includeDetails ? 'full' : 'fast'}`;
   // Check cache first
   if (useCache) {
-    const cached = apiCache.get(`stock_${symbol}`);
+    const cached = apiCache.get(cacheKey);
     if (cached) {
+      // #region agent log
+      debugLog('baseline', 'H1', 'stocks.js:fetchStockData', 'cache_hit', { symbol, ms: Math.round(performance.now() - startedAt) });
+      // #endregion
       return cached;
     }
   }
 
   const methods = [
     async () => {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y&includePrePost=false&events=div%7Csplit%7Cearn&lang=en-US&region=US`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${includeDetails ? '1y' : '1mo'}&includePrePost=false&events=div%7Csplit%7Cearn&lang=en-US&region=US`;
       const response = await fetch(url, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -259,7 +289,7 @@ async function fetchStockData(symbol, useCache = true) {
       return await response.json();
     },
     async () => {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y&includePrePost=false&events=div%7Csplit%7Cearn&lang=en-US&region=US`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${includeDetails ? '1y' : '1mo'}&includePrePost=false&events=div%7Csplit%7Cearn&lang=en-US&region=US`;
       const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
       const response = await fetch(proxyUrl, {
         method: 'GET',
@@ -299,32 +329,34 @@ async function fetchStockData(symbol, useCache = true) {
       let industry = meta.sector || meta.industry || 'N/A';
       let analystRating = meta.recommendationMean || null;
       
-      // Try to get more details from quoteSummary
-      try {
-        const summaryUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryProfile,recommendationTrend`;
-        const proxySummaryUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(summaryUrl)}`;
-        const summaryResponse = await fetch(proxySummaryUrl, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (summaryResponse.ok) {
-          const summaryData = await summaryResponse.json();
-          const profile = summaryData.quoteSummary?.result?.[0]?.summaryProfile;
-          if (profile) {
-            industry = profile.industry || profile.sector || industry;
-          }
-          const recommendation = summaryData.quoteSummary?.result?.[0]?.recommendationTrend;
-          if (recommendation?.trend) {
-            const trends = recommendation.trend;
-            const latest = trends[trends.length - 1];
-            if (latest) {
-              analystRating = latest.strongBuy || latest.buy || latest.hold || 'N/A';
+      // Try to get more details from quoteSummary only for full detail views
+      if (includeDetails) {
+        try {
+          const summaryUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryProfile,recommendationTrend`;
+          const proxySummaryUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(summaryUrl)}`;
+          const summaryResponse = await fetch(proxySummaryUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          if (summaryResponse.ok) {
+            const summaryData = await summaryResponse.json();
+            const profile = summaryData.quoteSummary?.result?.[0]?.summaryProfile;
+            if (profile) {
+              industry = profile.industry || profile.sector || industry;
+            }
+            const recommendation = summaryData.quoteSummary?.result?.[0]?.recommendationTrend;
+            if (recommendation?.trend) {
+              const trends = recommendation.trend;
+              const latest = trends[trends.length - 1];
+              if (latest) {
+                analystRating = latest.strongBuy || latest.buy || latest.hold || 'N/A';
+              }
             }
           }
+        } catch (e) {
+          console.log('Could not fetch additional details:', e);
         }
-      } catch (e) {
-        console.log('Could not fetch additional details:', e);
       }
       
       const stockData = {
@@ -346,8 +378,15 @@ async function fetchStockData(symbol, useCache = true) {
       
       // Cache the result
       if (useCache) {
-        apiCache.set(`stock_${symbol}`, stockData);
+        apiCache.set(cacheKey, stockData, includeDetails ? 5 * 60 * 1000 : 10 * 60 * 1000);
       }
+      // #region agent log
+      debugLog('baseline', 'H2', 'stocks.js:fetchStockData', 'success', {
+        symbol,
+        ms: Math.round(performance.now() - startedAt),
+        volume: stockData.volume || 0
+      });
+      // #endregion
       
       return stockData;
     } catch (error) {
@@ -403,7 +442,7 @@ async function searchStock(query) {
   resultsDiv.innerHTML = '<div class="search-loading">Loading prices...</div>';
   const symbols = suggestions.map(s => s.symbol);
   const stockDataPromises = symbols.map(sym =>
-    fetchStockData(sym).catch(() => ({ symbol: sym, name: suggestions.find(s => s.symbol === sym)?.name || sym, error: true }))
+    fetchStockData(sym, true, { includeDetails: false }).catch(() => ({ symbol: sym, name: suggestions.find(s => s.symbol === sym)?.name || sym, error: true }))
   );
   const stocks = await Promise.all(stockDataPromises);
   const valid = stocks.filter(s => !s.error && s.price > 0);
@@ -458,15 +497,24 @@ function formatMarketCap(marketCap) {
 
 // Load category stocks - predefined sectors, sorted by volume (most active)
 async function filterStocksByCategory(category) {
+  const startedAt = performance.now();
   const symbols = CATEGORY_SYMBOLS[category] || [];
   if (symbols.length === 0) return [];
   try {
     const stockDataPromises = symbols.map(sym =>
-      fetchStockData(sym).catch(() => ({ symbol: sym, name: sym, price: 0, change: 0, changePercent: 0, volume: 0, error: true }))
+      fetchStockData(sym, true, { includeDetails: false }).catch(() => ({ symbol: sym, name: sym, price: 0, change: 0, changePercent: 0, volume: 0, error: true }))
     );
     const stocks = await Promise.all(stockDataPromises);
     const valid = stocks.filter(s => !s.error && s.price > 0);
     valid.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+    // #region agent log
+    debugLog('baseline', 'H3', 'stocks.js:filterStocksByCategory', 'category_loaded', {
+      category,
+      requested: symbols.length,
+      valid: valid.length,
+      ms: Math.round(performance.now() - startedAt)
+    });
+    // #endregion
     return valid.slice(0, 12);
   } catch (error) {
     console.error('Error loading category:', error);
@@ -476,17 +524,18 @@ async function filterStocksByCategory(category) {
 
 // Load category stocks with dynamic filtering
 async function loadCategoryStocks(category) {
+  const startedAt = performance.now();
   currentCategory = category;
   const container = document.getElementById('categoryStocks');
   if (!container) return;
   
-  container.innerHTML = '<div class="category-loading">Loading and analyzing stocks...</div>';
+  container.innerHTML = '<div class="category-loading">Loading most active stocks...</div>';
   
   try {
     const stocks = await filterStocksByCategory(category);
     
     if (stocks.length === 0) {
-      container.innerHTML = '<div class="category-loading">No stocks match the criteria at this time. Data is updated daily. Please try again later.</div>';
+      container.innerHTML = '<div class="category-loading">No stocks available for this category right now.</div>';
       return;
     }
     
@@ -494,11 +543,18 @@ async function loadCategoryStocks(category) {
     const validStocks = stocks.filter(stock => !stock.error && stock.price > 0);
     
     if (validStocks.length === 0) {
-      container.innerHTML = '<div class="category-loading">Unable to load stock data. Please refresh the page.</div>';
+      container.innerHTML = '<div class="category-loading">Unable to load stock data. Please refresh.</div>';
       return;
     }
     
     container.innerHTML = validStocks.map(stock => createStockCard(stock, true)).join('');
+    // #region agent log
+    debugLog('baseline', 'H4', 'stocks.js:loadCategoryStocks', 'rendered', {
+      category,
+      cards: validStocks.length,
+      ms: Math.round(performance.now() - startedAt)
+    });
+    // #endregion
   } catch (error) {
     console.error('Error loading category stocks:', error);
     container.innerHTML = '<div class="category-loading">Unable to load stocks. Please try again.</div>';
@@ -715,7 +771,7 @@ async function updateStockTicker() {
   try {
     const stockDataPromises = STOCK_SYMBOLS.map(async (symbol) => {
       try {
-        return await fetchStockData(symbol);
+        return await fetchStockData(symbol, true, { includeDetails: false });
       } catch (error) {
         console.error(`Failed to load ${symbol}:`, error);
         return {
@@ -847,10 +903,13 @@ async function updateStockTicker() {
   }
   
   // Load initial category
-  loadCategoryStocks('mining');
+  loadCategoryStocks('financials');
   
   // Update ticker if container exists
   if (tickerContainer) {
+    // #region agent log
+    debugLog('baseline', 'H5', 'stocks.js:initStocksPage', 'ticker_present', { hasTicker: true });
+    // #endregion
     updateStockTicker();
     setInterval(() => {
       updateStockTicker();
