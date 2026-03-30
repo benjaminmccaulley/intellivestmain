@@ -776,58 +776,67 @@ function highlightSelectedStockCard(symbol) {
   });
 }
 
-// Update stock details (enhanced version)
+// Update stock details (Yahoo chart via corsproxy.io)
 async function updateStockDetails(symbol) {
   if (!symbol) return;
   currentSymbol = symbol;
-  
+
   const priceElement = document.getElementById('stockPrice');
-  if (priceElement) priceElement.textContent = 'Loading...';
-  
+  if (priceElement) priceElement.textContent = 'Loading…';
+
   try {
-    const stockData = await fetchStockData(symbol);
-    
+    const stockData = await fetchCorsChartStockData(symbol, currentTimeframe);
+    lastChartStockData = stockData;
+
     const nameElement = document.getElementById('selectedStockName');
     const symbolElement = document.getElementById('selectedStockSymbol');
     const priceEl = document.getElementById('stockPrice');
-    
+
     if (nameElement) nameElement.textContent = stockData.name;
     if (symbolElement) symbolElement.textContent = stockData.symbol;
-    if (priceEl) priceEl.textContent = `$${stockData.price.toFixed(2)}`;
-    
+    if (priceEl && !Number.isNaN(stockData.price)) priceEl.textContent = `$${stockData.price.toFixed(2)}`;
+
     const isPositive = stockData.change >= 0;
-    const arrow = isPositive ? '↑' : '↓';
     const changeElement = document.getElementById('priceChange');
     if (changeElement) {
-      changeElement.textContent = `${arrow} ${isPositive ? '+' : ''}${stockData.change.toFixed(2)} (${isPositive ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`;
+      changeElement.textContent = `${isPositive ? '▲' : '▼'} ${isPositive ? '+' : ''}${stockData.change.toFixed(2)} (${isPositive ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`;
       changeElement.className = `price-change ${isPositive ? 'positive' : 'negative'}`;
     }
-    
-    // Update all stats
+
     const marketCapEl = document.getElementById('statMarketCap');
-    const industryEl = document.getElementById('statIndustry');
-    const openEl = document.getElementById('statOpen');
-    const highEl = document.getElementById('statHigh');
-    const lowEl = document.getElementById('statLow');
     const volumeEl = document.getElementById('statVolume');
-    const ratingEl = document.getElementById('statRating');
-    
+    const hi52 = document.getElementById('stat52High');
+    const lo52 = document.getElementById('stat52Low');
+    const peEl = document.getElementById('statPE');
+
     if (marketCapEl) marketCapEl.textContent = formatMarketCap(stockData.marketCap);
-    if (industryEl) industryEl.textContent = stockData.industry;
-    if (openEl) openEl.textContent = `$${stockData.open.toFixed(2)}`;
-    if (highEl) highEl.textContent = `$${stockData.high.toFixed(2)}`;
-    if (lowEl) lowEl.textContent = `$${stockData.low.toFixed(2)}`;
-    if (volumeEl) volumeEl.textContent = formatVolume(stockData.volume);
-    if (ratingEl) ratingEl.textContent = stockData.analystRating || 'N/A';
-    
-    // Update chart
+    if (volumeEl) volumeEl.textContent = formatVolume(stockData.volume || 0);
+    if (hi52) {
+      hi52.textContent =
+        stockData.fiftyTwoWeekHigh != null && !Number.isNaN(stockData.fiftyTwoWeekHigh)
+          ? `$${stockData.fiftyTwoWeekHigh.toFixed(2)}`
+          : '—';
+    }
+    if (lo52) {
+      lo52.textContent =
+        stockData.fiftyTwoWeekLow != null && !Number.isNaN(stockData.fiftyTwoWeekLow)
+          ? `$${stockData.fiftyTwoWeekLow.toFixed(2)}`
+          : '—';
+    }
+    if (peEl) {
+      peEl.textContent =
+        stockData.trailingPE != null && !Number.isNaN(stockData.trailingPE)
+          ? stockData.trailingPE.toFixed(2)
+          : 'N/A';
+    }
+
     const chartPlaceholder = document.getElementById('stockChartPlaceholder');
     if (chartPlaceholder) chartPlaceholder.style.display = 'none';
     updateChart(stockData);
   } catch (error) {
     console.error('Error updating stock details:', error);
     const priceEl = document.getElementById('stockPrice');
-    if (priceEl) priceEl.textContent = 'Error loading data';
+    if (priceEl) priceEl.textContent = 'Error';
     alert(`Unable to load data for ${symbol}. Please try again later.`);
   }
 }
@@ -847,21 +856,24 @@ function updateChart(stockData) {
   
   const timestamps = stockData.timestamps;
   const prices = stockData.prices;
-  
-  const now = Date.now() / 1000;
-  let daysBack = 1;
-  
-  switch (currentTimeframe) {
-    case '1D': daysBack = 1; break;
-    case '1W': daysBack = 7; break;
-    case '1M': daysBack = 30; break;
-    case '3M': daysBack = 90; break;
-    case '1Y': daysBack = 365; break;
+
+  let filteredData = timestamps.map((ts, i) => ({ ts, price: prices[i] }))
+    .filter(item => item.price !== null && item.price !== undefined && !isNaN(item.price));
+
+  if (!stockData.chartRangeScoped) {
+    const now = Date.now() / 1000;
+    let daysBack = 1;
+    switch (currentTimeframe) {
+      case '1D': daysBack = 1; break;
+      case '1W': daysBack = 7; break;
+      case '1M': daysBack = 30; break;
+      case '3M': daysBack = 90; break;
+      case '6M': daysBack = 180; break;
+      case '1Y': daysBack = 365; break;
+    }
+    const cutoffTime = now - daysBack * 86400;
+    filteredData = filteredData.filter(item => item.ts >= cutoffTime);
   }
-  
-  const cutoffTime = now - (daysBack * 86400);
-  const filteredData = timestamps.map((ts, i) => ({ ts, price: prices[i] }))
-    .filter(item => item.ts >= cutoffTime && item.price !== null && item.price !== undefined && !isNaN(item.price));
   
   if (filteredData.length === 0) {
     console.error('No data points after filtering');
