@@ -9,6 +9,9 @@ const STOCK_NAMES = {
 
 // Predefined category symbols (most active by sector - sorted by volume when displayed)
 const CATEGORY_SYMBOLS = {
+  technology: [
+    'AAPL', 'MSFT', 'GOOGL', 'NVDA', 'META', 'AMD', 'AVGO', 'CRM', 'ORCL', 'ADBE', 'NFLX', 'CSCO'
+  ],
   financials: [
     'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'AXP', 'USB', 'PNC', 'BK', 'TFC', 'COF', 'AIG', 'MET'
   ],
@@ -17,6 +20,9 @@ const CATEGORY_SYMBOLS = {
   ],
   industrials: [
     'CAT', 'DE', 'UNP', 'UPS', 'RTX', 'LMT', 'GE', 'HON', 'BA', 'NOC', 'MMM', 'WM', 'ITW', 'ETN', 'PH', 'EMR'
+  ],
+  healthcare: [
+    'UNH', 'JNJ', 'LLY', 'ABBV', 'MRK', 'TMO', 'PFE', 'CVS', 'AMGN', 'GILD', 'ISRG', 'BMY'
   ],
   'consumer-discretionary': [
     'AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'LOW', 'BKNG', 'TGT', 'MAR', 'CMG', 'RCL', 'GM', 'F', 'ROST', 'ORLY'
@@ -30,11 +36,46 @@ const CATEGORY_SYMBOLS = {
   ]
 };
 
+function getSymbolsForFilter(filterKey) {
+  if (filterKey === 'all') {
+    const set = new Set();
+    [
+      'technology',
+      'energy',
+      'financials',
+      'healthcare',
+      'industrials',
+      'consumer-discretionary',
+      'consumer-staples',
+      'minerals'
+    ].forEach(function (k) {
+      (CATEGORY_SYMBOLS[k] || []).forEach(function (s) {
+        set.add(s);
+      });
+    });
+    return Array.from(set);
+  }
+  if (filterKey === 'finance') return CATEGORY_SYMBOLS.financials || [];
+  if (filterKey === 'consumer') {
+    const set = new Set([
+      ...(CATEGORY_SYMBOLS['consumer-discretionary'] || []),
+      ...(CATEGORY_SYMBOLS['consumer-staples'] || [])
+    ]);
+    return Array.from(set);
+  }
+  if (filterKey === 'technology') return CATEGORY_SYMBOLS.technology || [];
+  if (filterKey === 'healthcare') return CATEGORY_SYMBOLS.healthcare || [];
+  if (filterKey === 'energy') return CATEGORY_SYMBOLS.energy || [];
+  if (filterKey === 'minerals') return CATEGORY_SYMBOLS.minerals || [];
+  return [];
+}
+
 let stockChart = null;
 let currentSymbol = '';
 let currentTimeframe = '1D';
-let currentCategory = 'financials';
-let currentStockView = 'live-tracker';
+let currentFilter = 'all';
+let analysisPanelOpen = false;
+let lastChartStockData = null;
 
 /** Daily % via market-data.js (Yahoo v7 quote + v8 chart fallbacks). */
 async function fetchDailyChartQuote(symbol) {
@@ -89,6 +130,90 @@ function formatDailyPctHtml(stock) {
       ? `▲ +${stock.changePercent.toFixed(2)}%`
       : `▼ ${stock.changePercent.toFixed(2)}%`;
   return { cls: isPositive ? 'positive' : 'negative', html: line };
+}
+
+function chartParamsForTimeframe(tf) {
+  switch (tf) {
+    case '1D':
+      return { interval: '5m', range: '1d' };
+    case '1W':
+      return { interval: '1h', range: '5d' };
+    case '1M':
+      return { interval: '1d', range: '1mo' };
+    case '3M':
+      return { interval: '1d', range: '3mo' };
+    case '6M':
+      return { interval: '1d', range: '6mo' };
+    case '1Y':
+      return { interval: '1d', range: '1y' };
+    default:
+      return { interval: '1d', range: '1mo' };
+  }
+}
+
+/** Yahoo chart via corsproxy.io — used for analysis panel + chart ranges. */
+async function fetchCorsChartStockData(symbol, timeframe) {
+  const { interval, range } = chartParamsForTimeframe(timeframe);
+  const yahooUrl =
+    'https://query1.finance.yahoo.com/v8/finance/chart/' +
+    encodeURIComponent(symbol) +
+    '?interval=' +
+    interval +
+    '&range=' +
+    range +
+    '&includePrePost=false';
+  const proxied = 'https://corsproxy.io/?' + encodeURIComponent(yahooUrl);
+  const res = await fetch(proxied, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('chart fetch failed');
+  const data = await res.json();
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error('no chart data');
+  const meta = result.meta;
+  const quote = result.indicators?.quote?.[0];
+  const timestamps = result.timestamp || [];
+  const closes = quote?.close || [];
+  const validData = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    if (closes[i] != null && !Number.isNaN(Number(closes[i]))) {
+      validData.push({ timestamp: timestamps[i], price: closes[i] });
+    }
+  }
+  const lastPrice = validData.length ? validData[validData.length - 1].price : null;
+  const currentPrice =
+    meta.regularMarketPrice != null
+      ? Number(meta.regularMarketPrice)
+      : lastPrice != null
+        ? Number(lastPrice)
+        : NaN;
+  const rawPrev = meta.previousClose != null ? meta.previousClose : meta.chartPreviousClose;
+  const previousClose = rawPrev != null ? Number(rawPrev) : NaN;
+  const change =
+    !Number.isNaN(currentPrice) && !Number.isNaN(previousClose)
+      ? currentPrice - previousClose
+      : 0;
+  const changePercent =
+    !Number.isNaN(previousClose) && previousClose !== 0
+      ? (change / previousClose) * 100
+      : 0;
+  return {
+    symbol,
+    name: meta.longName || meta.shortName || meta.symbol || symbol,
+    price: currentPrice,
+    change,
+    changePercent,
+    open: meta.regularMarketOpen != null ? Number(meta.regularMarketOpen) : previousClose,
+    high: meta.regularMarketDayHigh != null ? Number(meta.regularMarketDayHigh) : null,
+    low: meta.regularMarketDayLow != null ? Number(meta.regularMarketDayLow) : null,
+    volume: meta.regularMarketVolume || 0,
+    marketCap: meta.marketCap || 0,
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh != null ? Number(meta.fiftyTwoWeekHigh) : null,
+    fiftyTwoWeekLow: meta.fiftyTwoWeekLow != null ? Number(meta.fiftyTwoWeekLow) : null,
+    trailingPE: meta.trailingPE != null ? Number(meta.trailingPE) : null,
+    industry: meta.sector || meta.industry || '—',
+    chartRangeScoped: true,
+    timestamps: validData.map(d => d.timestamp),
+    prices: validData.map(d => d.price)
+  };
 }
 
 // API Cache - stores responses with configurable TTL

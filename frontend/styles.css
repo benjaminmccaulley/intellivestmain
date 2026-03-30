@@ -2191,3 +2191,58 @@ input:hover #cursor,
     grid-template-columns: 1fr;
   }
 }
+
+/* Stocks page — unified filter + analysis panel */
+.stock-filter-tabs {
+  margin-bottom: 16px;
+}
+.stock-selection-hint {
+  text-align: center;
+  color: var(--ink-500);
+  font-size: 15px;
+  margin: 0 0 20px;
+}
+.stock-selection-hint.is-hidden {
+  display: none;
+}
+.stock-analysis-panel {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.45s ease, opacity 0.35s ease;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--paper-2);
+}
+.dark .stock-analysis-panel {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+.stock-analysis-panel.is-open {
+  max-height: 2200px;
+  opacity: 1;
+  padding: 32px 0 48px;
+}
+.stock-analysis-panel-body {
+  padding-top: 8px;
+}
+.stock-analysis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .stock-analysis-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.stock-price-large .price-value {
+  font-size: 2rem;
+  font-weight: 700;
+}
+.chart-container-tall {
+  min-height: 320px;
+  position: relative;
+}
+.chart-container-tall canvas {
+  max-height: 360px;
+}
