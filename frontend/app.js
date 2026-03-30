@@ -64,6 +64,33 @@
 })();
 
 // Basic localStorage-backed demo auth (no real backend)
+const SESSION_KEY = 'intellivest_session';
+
+(function migrateLegacySession() {
+  try {
+    if (localStorage.getItem(SESSION_KEY)) return;
+    const raw = sessionStorage.getItem('intellivest_current_user');
+    if (!raw) return;
+    const { username } = JSON.parse(raw);
+    const users = JSON.parse(localStorage.getItem('intellivest_users') || '[]');
+    const user = users.find(u => u.username === username);
+    if (user) {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          username: user.username,
+          email: user.email || '',
+          firstName: user.firstName || '',
+          lastName: user.lastName || ''
+        })
+      );
+    }
+    sessionStorage.removeItem('intellivest_current_user');
+  } catch (e) {
+    /* ignore */
+  }
+})();
+
 const Auth = {
   key: 'intellivest_users',
   get users() {
@@ -97,9 +124,14 @@ const Auth = {
     if (!user) {
       throw new Error('Invalid username or password');
     }
-    sessionStorage.setItem('intellivest_current_user', JSON.stringify({ 
-      username: user.username 
-    }));
+    const session = {
+      username: user.username,
+      email: user.email || '',
+      firstName: user.firstName || '',
+      lastName: user.lastName || ''
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionStorage.removeItem('intellivest_current_user');
     return user;
   }
 };

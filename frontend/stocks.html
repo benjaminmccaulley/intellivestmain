@@ -57,11 +57,15 @@
       <div class="container">
         <h1>Stock Analysis</h1>
         <p class="page-subtitle">Real-time market data and analysis tools for informed investing.</p>
+        <div class="category-tabs" id="stocksPageTabs" style="margin-top: 1rem;">
+          <button class="category-tab active" data-stock-view="live-tracker">Live Stock Tracker</button>
+          <button class="category-tab" data-stock-view="stock-analysis">Stock Analysis</button>
+        </div>
       </div>
     </section>
 
     <!-- Stock Search Section -->
-    <section class="stock-search-section">
+    <section class="stock-search-section" data-stock-view-panel="live-tracker">
       <div class="container">
         <div class="search-container-large">
           <div class="search-icon">🔍</div>
@@ -79,7 +83,7 @@
     </section>
 
     <!-- Stock Categories Section -->
-    <section class="stock-categories-section">
+    <section class="stock-categories-section" data-stock-view-panel="live-tracker">
       <div class="container">
         <div class="categories-header">
           <h2>Explore Stock Categories</h2>
@@ -92,6 +96,7 @@
           <button class="category-tab" data-category="industrials">Industrials</button>
           <button class="category-tab" data-category="consumer-discretionary">Consumer Discretionary</button>
           <button class="category-tab" data-category="consumer-staples">Consumer Staples</button>
+          <button class="category-tab" data-category="minerals">Mineral Stocks</button>
         </div>
 
         <div id="categoryStocks" class="category-stocks-grid">
@@ -101,7 +106,7 @@
     </section>
 
     <!-- Stock Analysis Section -->
-    <section class="stocks-analysis-section">
+    <section class="stocks-analysis-section" data-stock-view-panel="stock-analysis" style="display: none;">
       <div class="container">
         <div class="analysis-header">
           <div class="stock-selector">
@@ -110,9 +115,9 @@
               type="text" 
               id="stockSelect" 
               class="stock-select-input"
-              placeholder="Enter stock symbol (e.g., AAPL, MSFT)"
+              placeholder="-- Select a Stock --"
               list="stockOptions"
-              value="AAPL"
+              value=""
             />
             <datalist id="stockOptions">
               <option value="AAPL">Apple</option>
@@ -178,6 +183,7 @@
           </div>
 
           <div class="chart-container">
+            <div id="stockChartPlaceholder" class="category-loading">Select a stock above to view its chart</div>
             <canvas id="stockChart"></canvas>
           </div>
         </div>
@@ -212,6 +218,8 @@
   </footer>
 
   <script src="./app.js"></script>
+  <script src="./auth-ui.js"></script>
+  <script src="./market-data.js"></script>
   <script src="./stocks.js"></script>
 </body>
 </html>

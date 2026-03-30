@@ -55,26 +55,13 @@
       <div class="chatbot-header">
         <h1>Ask Intellivest</h1>
         <p class="chatbot-subtitle">Get personalized financial advice from our AI chatbot. Ask anything about financial literacy, investing, budgeting, and more.</p>
+        <div class="chatbot-toolbar">
+          <button type="button" class="btn secondary btn-sm" id="chatbotUpdateProfile">📋 Update My Profile</button>
+        </div>
       </div>
 
       <div class="chatbot-window">
-        <div class="chatbot-messages" id="chatbotMessages">
-          <div class="message bot-message">
-            <div class="message-avatar">IV</div>
-            <div class="message-content">
-              <div class="message-text">Hello! I'm Intellivest AI, your financial literacy assistant. I can help you with questions about:</div>
-              <ul class="message-list">
-                <li>Budgeting and saving strategies</li>
-                <li>Investing basics and portfolio management</li>
-                <li>Credit and debt management</li>
-                <li>Retirement planning</li>
-                <li>Stock market and trading</li>
-                <li>Financial goal setting</li>
-              </ul>
-              <div class="message-text">What would you like to know?</div>
-            </div>
-          </div>
-        </div>
+        <div class="chatbot-messages" id="chatbotMessages"></div>
 
         <div class="chatbot-input-container">
           <form id="chatbotForm" class="chatbot-form">
@@ -125,6 +112,8 @@
   </footer>
 
   <script src="./app.js"></script>
+  <script src="./auth-ui.js"></script>
+  <script src="./chatbot-survey.js"></script>
   <script src="./chatbot.js"></script>
 </body>
 </html>

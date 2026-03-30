@@ -23,13 +23,73 @@ const CATEGORY_SYMBOLS = {
   ],
   'consumer-staples': [
     'WMT', 'PG', 'KO', 'PEP', 'COST', 'PM', 'MO', 'CL', 'KMB', 'MDLZ', 'GIS', 'KHC', 'KR', 'HSY', 'ADM', 'EL'
+  ],
+  minerals: [
+    'BHP', 'RIO', 'VALE', 'FCX', 'NEM', 'GOLD', 'AA', 'ALB', 'MP', 'TECK',
+    'SCCO', 'HL', 'PAAS', 'AG', 'WPM', 'SBSW', 'UUUU', 'DNN', 'UEC', 'NG'
   ]
 };
 
 let stockChart = null;
-let currentSymbol = 'AAPL';
+let currentSymbol = '';
 let currentTimeframe = '1D';
 let currentCategory = 'financials';
+let currentStockView = 'live-tracker';
+
+/** Daily % via market-data.js (Yahoo v7 quote + v8 chart fallbacks). */
+async function fetchDailyChartQuote(symbol) {
+  const fetcher =
+    typeof window.MarketData !== 'undefined' &&
+    typeof window.MarketData.fetchDailyStockQuote === 'function'
+      ? window.MarketData.fetchDailyStockQuote
+      : null;
+  if (!fetcher) {
+    return {
+      symbol,
+      name: symbol,
+      price: 0,
+      change: 0,
+      changePercent: NaN,
+      volume: 0,
+      error: true,
+      percentNa: true
+    };
+  }
+  const r = await fetcher(symbol);
+  if (r.na) {
+    return {
+      symbol,
+      name: symbol,
+      price: 0,
+      change: 0,
+      changePercent: NaN,
+      volume: 0,
+      error: true,
+      percentNa: true
+    };
+  }
+  return {
+    symbol,
+    name: r.name,
+    price: r.price,
+    change: r.change,
+    changePercent: r.changePercent,
+    volume: r.volume,
+    error: false
+  };
+}
+
+function formatDailyPctHtml(stock) {
+  if (stock.error || stock.percentNa || stock.changePercent == null || Number.isNaN(stock.changePercent)) {
+    return { cls: 'pct-na', html: 'N/A' };
+  }
+  const isPositive = stock.change >= 0;
+  const line =
+    isPositive
+      ? `▲ +${stock.changePercent.toFixed(2)}%`
+      : `▼ ${stock.changePercent.toFixed(2)}%`;
+  return { cls: isPositive ? 'positive' : 'negative', html: line };
+}
 
 // API Cache - stores responses with configurable TTL
 const apiCache = {
@@ -365,30 +425,29 @@ async function fetchStockData(symbol, useCache = true, options = {}) {
 
 // Reusable Stock Card Component
 function createStockCard(stock, onClickHandler = null) {
-  if (!stock || stock.error) {
-    return `
-      <div class="stock-card-category error">
-        <div class="stock-card-symbol">${stock?.symbol || 'N/A'}</div>
-        <div class="stock-card-price">Error</div>
-      </div>
-    `;
+  if (!stock) {
+    return '';
   }
-  
-      const isPositive = stock.change >= 0;
+  const pct = formatDailyPctHtml(stock);
   const onClick = onClickHandler ? `onclick="selectStockFromCard('${stock.symbol}')"` : '';
+  const priceLine =
+    stock.error || !stock.price
+      ? '—'
+      : `$${stock.price.toFixed(2)}`;
 
-      return `
-    <div class="stock-card-category" ${onClick} data-symbol="${stock.symbol}">
+  const selectedClass = currentSymbol && stock.symbol === currentSymbol ? ' stock-card-selected' : '';
+  return `
+    <div class="stock-card-category ${stock.error ? 'soft-error' : ''}${selectedClass}" ${onClick} data-symbol="${stock.symbol}">
       <div class="stock-card-header-category">
-            <div class="stock-card-symbol">${stock.symbol}</div>
-        <div class="stock-card-change ${isPositive ? 'positive' : 'negative'}">
-          ${isPositive ? '+' : ''}${stock.changePercent.toFixed(2)}%
-            </div>
-          </div>
-      <div class="stock-card-name-category">${stock.name}</div>
-      <div class="stock-card-price-category">$${stock.price.toFixed(2)}</div>
+        <div class="stock-card-symbol">${stock.symbol}</div>
+        <div class="stock-card-change ${pct.cls}">
+          ${pct.html}
         </div>
-      `;
+      </div>
+      <div class="stock-card-name-category">${stock.name || stock.symbol}</div>
+      <div class="stock-card-price-category">${priceLine}</div>
+    </div>
+  `;
 }
 
 // Search for stocks - universal Yahoo Finance search
@@ -396,8 +455,10 @@ async function searchStock(query) {
   const resultsDiv = document.getElementById('searchResults');
   if (!query.trim()) {
     resultsDiv.innerHTML = '';
+    window.lastStockSearchQuery = '';
     return;
   }
+  window.lastStockSearchQuery = query.trim();
   resultsDiv.innerHTML = '<div class="search-loading">Searching Yahoo Finance...</div>';
 
   const suggestions = await searchYahooStocks(query);
@@ -409,7 +470,10 @@ async function searchStock(query) {
   resultsDiv.innerHTML = '<div class="search-loading">Loading prices...</div>';
   const symbols = suggestions.map(s => s.symbol);
   const stockDataPromises = symbols.map(sym =>
-    fetchStockData(sym, true, { includeDetails: false }).catch(() => ({ symbol: sym, name: suggestions.find(s => s.symbol === sym)?.name || sym, error: true }))
+    fetchDailyChartQuote(sym).then((d) => ({
+      ...d,
+      name: d.name && d.name !== sym ? d.name : (suggestions.find(q => q.symbol === sym)?.name || d.name)
+    })).catch(() => ({ symbol: sym, name: suggestions.find(q => q.symbol === sym)?.name || sym, error: true }))
   );
   const stocks = await Promise.all(stockDataPromises);
   const valid = stocks.filter(s => !s.error && s.price > 0);
@@ -427,19 +491,29 @@ function displaySearchResults(stocks) {
     <div class="search-results-header">Found ${stocks.length} stock(s)</div>
     <div class="search-results-grid">
       ${stocks.map(stock => {
-        const isPositive = stock.change >= 0;
+        const pct = formatDailyPctHtml(stock);
+        const move =
+          stock.error || stock.percentNa || Number.isNaN(stock.change)
+            ? '—'
+            : `${stock.change >= 0 ? '+' : ''}${stock.change.toFixed(2)} today`;
+        const moveCls =
+          stock.error || stock.percentNa
+            ? 'pct-na'
+            : stock.change >= 0
+              ? 'positive'
+              : 'negative';
         return `
           <div class="search-result-card" onclick="selectStockFromSearch('${stock.symbol}')">
             <div class="search-result-card-header">
               <div class="search-result-symbol">${stock.symbol}</div>
-              <span class="search-result-change ${isPositive ? 'positive' : 'negative'}">
-                ${isPositive ? '+' : ''}${stock.changePercent.toFixed(2)}%
+              <span class="search-result-change ${pct.cls}">
+                ${pct.html}
               </span>
             </div>
             <div class="search-result-name">${(stock.name || stock.symbol).slice(0, 35)}${(stock.name || '').length > 35 ? '…' : ''}</div>
-            <div class="search-result-price">$${stock.price.toFixed(2)}</div>
-            <div class="search-result-movement ${isPositive ? 'positive' : 'negative'}">
-              ${isPositive ? '+' : ''}${stock.change.toFixed(2)} today
+            <div class="search-result-price">${stock.price > 0 ? `$${stock.price.toFixed(2)}` : '—'}</div>
+            <div class="search-result-movement ${moveCls}">
+              ${move}
             </div>
             <button class="btn primary btn-sm" onclick="event.stopPropagation(); selectStockFromSearch('${stock.symbol}')">View Details</button>
           </div>
@@ -468,12 +542,24 @@ async function filterStocksByCategory(category) {
   if (symbols.length === 0) return [];
   try {
     const stockDataPromises = symbols.map(sym =>
-      fetchStockData(sym, true, { includeDetails: false }).catch(() => ({ symbol: sym, name: sym, price: 0, change: 0, changePercent: 0, volume: 0, error: true }))
+      fetchDailyChartQuote(sym).catch(() => ({
+        symbol: sym,
+        name: sym,
+        price: 0,
+        change: 0,
+        changePercent: NaN,
+        volume: 0,
+        error: true,
+        percentNa: true
+      }))
     );
     const stocks = await Promise.all(stockDataPromises);
-    const valid = stocks.filter(s => !s.error && s.price > 0);
-    valid.sort((a, b) => (b.volume || 0) - (a.volume || 0));
-    return valid.slice(0, 12);
+    stocks.sort((a, b) => {
+      const bad = x => (x.error || x.percentNa ? 1 : 0);
+      if (bad(a) !== bad(b)) return bad(a) - bad(b);
+      return (b.volume || 0) - (a.volume || 0);
+    });
+    return stocks;
   } catch (error) {
     console.error('Error loading category:', error);
     return [];
@@ -496,15 +582,7 @@ async function loadCategoryStocks(category) {
       return;
     }
     
-    // Filter out error stocks and ensure we have valid data
-    const validStocks = stocks.filter(stock => !stock.error && stock.price > 0);
-    
-    if (validStocks.length === 0) {
-      container.innerHTML = '<div class="category-loading">Unable to load stock data. Please refresh.</div>';
-      return;
-    }
-    
-    container.innerHTML = validStocks.map(stock => createStockCard(stock, true)).join('');
+    container.innerHTML = stocks.map(stock => createStockCard(stock, true)).join('');
   } catch (error) {
     console.error('Error loading category stocks:', error);
     container.innerHTML = '<div class="category-loading">Unable to load stocks. Please try again.</div>';
@@ -513,29 +591,34 @@ async function loadCategoryStocks(category) {
 
 // Select stock from card or search
 window.selectStockFromCard = function(symbol) {
+  if (!symbol) return;
+  currentSymbol = symbol;
+  highlightSelectedStockCard(symbol);
   const stockSelect = document.getElementById('stockSelect');
   if (stockSelect) stockSelect.value = symbol;
   updateStockDetails(symbol);
-  // Scroll to analysis section
-  const analysisSection = document.querySelector('.stocks-analysis-section');
-  if (analysisSection) {
-    analysisSection.scrollIntoView({ behavior: 'smooth' });
-  }
 };
 
 window.selectStockFromSearch = function(symbol) {
-    const stockSelect = document.getElementById('stockSelect');
+  if (!symbol) return;
+  currentSymbol = symbol;
+  highlightSelectedStockCard(symbol);
+  const stockSelect = document.getElementById('stockSelect');
   if (stockSelect) stockSelect.value = symbol;
   updateStockDetails(symbol);
-  // Scroll to analysis section
-  const analysisSection = document.querySelector('.stocks-analysis-section');
-  if (analysisSection) {
-    analysisSection.scrollIntoView({ behavior: 'smooth' });
-  }
 };
+
+function highlightSelectedStockCard(symbol) {
+  const cards = document.querySelectorAll('.stock-card-category[data-symbol]');
+  cards.forEach(card => {
+    if (card.dataset.symbol === symbol) card.classList.add('stock-card-selected');
+    else card.classList.remove('stock-card-selected');
+  });
+}
 
 // Update stock details (enhanced version)
 async function updateStockDetails(symbol) {
+  if (!symbol) return;
   currentSymbol = symbol;
   
   const priceElement = document.getElementById('stockPrice');
@@ -553,9 +636,10 @@ async function updateStockDetails(symbol) {
     if (priceEl) priceEl.textContent = `$${stockData.price.toFixed(2)}`;
     
     const isPositive = stockData.change >= 0;
+    const arrow = isPositive ? '↑' : '↓';
     const changeElement = document.getElementById('priceChange');
     if (changeElement) {
-      changeElement.textContent = `${isPositive ? '+' : ''}${stockData.change.toFixed(2)} (${isPositive ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`;
+      changeElement.textContent = `${arrow} ${isPositive ? '+' : ''}${stockData.change.toFixed(2)} (${isPositive ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`;
       changeElement.className = `price-change ${isPositive ? 'positive' : 'negative'}`;
     }
     
@@ -577,6 +661,8 @@ async function updateStockDetails(symbol) {
     if (ratingEl) ratingEl.textContent = stockData.analystRating || 'N/A';
     
     // Update chart
+    const chartPlaceholder = document.getElementById('stockChartPlaceholder');
+    if (chartPlaceholder) chartPlaceholder.style.display = 'none';
     updateChart(stockData);
   } catch (error) {
     console.error('Error updating stock details:', error);
@@ -711,6 +797,26 @@ function formatVolume(volume) {
   return volume.toString();
 }
 
+function showEmptyChartState() {
+  const chartPlaceholder = document.getElementById('stockChartPlaceholder');
+  if (chartPlaceholder) chartPlaceholder.style.display = 'block';
+  const nameElement = document.getElementById('selectedStockName');
+  const symbolElement = document.getElementById('selectedStockSymbol');
+  const priceEl = document.getElementById('stockPrice');
+  const changeEl = document.getElementById('priceChange');
+  if (nameElement) nameElement.textContent = 'No stock selected';
+  if (symbolElement) symbolElement.textContent = '—';
+  if (priceEl) priceEl.textContent = '—';
+  if (changeEl) {
+    changeEl.textContent = 'Select a stock above to view its chart';
+    changeEl.className = 'price-change';
+  }
+  if (stockChart) {
+    stockChart.destroy();
+    stockChart = null;
+  }
+}
+
 // Update stock ticker
 async function updateStockTicker() {
   const tickerContainer = document.getElementById('stocksTicker');
@@ -721,7 +827,7 @@ async function updateStockTicker() {
   try {
     const stockDataPromises = STOCK_SYMBOLS.map(async (symbol) => {
       try {
-        return await fetchStockData(symbol, true, { includeDetails: false });
+        return await fetchDailyChartQuote(symbol);
       } catch (error) {
         console.error(`Failed to load ${symbol}:`, error);
         return {
@@ -729,8 +835,9 @@ async function updateStockTicker() {
           name: STOCK_NAMES[symbol] || symbol,
           price: 0,
           change: 0,
-          changePercent: 0,
-          error: true
+          changePercent: NaN,
+          error: true,
+          percentNa: true
         };
       }
     });
@@ -738,28 +845,17 @@ async function updateStockTicker() {
     const stocksData = await Promise.all(stockDataPromises);
     
     tickerContainer.innerHTML = stocksData.map(stock => {
-      if (stock.error) {
-        return `
-          <div class="stock-card error" data-symbol="${stock.symbol}">
-            <div class="stock-card-header">
-              <div class="stock-card-symbol">${stock.symbol}</div>
-            </div>
-            <div class="stock-card-price">Error loading</div>
-            <div class="stock-card-name">${stock.name}</div>
-          </div>
-        `;
-      }
-      
-      const isPositive = stock.change >= 0;
+      const pct = formatDailyPctHtml(stock);
+      const priceLine = stock.error || !stock.price ? '—' : `$${stock.price.toFixed(2)}`;
       return `
-        <div class="stock-card" data-symbol="${stock.symbol}">
+        <div class="stock-card ${stock.error ? 'soft-error' : ''}" data-symbol="${stock.symbol}">
           <div class="stock-card-header">
             <div class="stock-card-symbol">${stock.symbol}</div>
-            <div class="stock-card-change ${isPositive ? 'positive' : 'negative'}">
-              ${isPositive ? '+' : ''}${stock.changePercent.toFixed(2)}%
+            <div class="stock-card-change ${pct.cls}">
+              ${pct.html}
             </div>
           </div>
-          <div class="stock-card-price">$${stock.price.toFixed(2)}</div>
+          <div class="stock-card-price">${priceLine}</div>
           <div class="stock-card-name">${stock.name}</div>
         </div>
       `;
@@ -777,20 +873,30 @@ async function updateStockTicker() {
   const tickerContainer = document.getElementById('stocksTicker');
   const searchInput = document.getElementById('stockSearchInput');
   const searchBtn = document.getElementById('searchStockBtn');
-  const categoryTabs = document.querySelectorAll('.category-tab');
+  const categoryTabs = document.querySelectorAll('.stock-categories-section .category-tab');
+  const viewTabs = document.querySelectorAll('#stocksPageTabs .category-tab');
+  const viewPanels = document.querySelectorAll('[data-stock-view-panel]');
   
   // Stock selector (now an input field)
   if (stockSelect) {
     stockSelect.addEventListener('change', (e) => {
       const symbol = e.target.value.trim().toUpperCase();
       if (symbol) {
+        currentSymbol = symbol;
+        highlightSelectedStockCard(symbol);
         updateStockDetails(symbol);
+      } else {
+        showEmptyChartState();
       }
     });
     stockSelect.addEventListener('blur', (e) => {
       const symbol = e.target.value.trim().toUpperCase();
       if (symbol) {
+        currentSymbol = symbol;
+        highlightSelectedStockCard(symbol);
         updateStockDetails(symbol);
+      } else {
+        showEmptyChartState();
       }
     });
   }
@@ -810,10 +916,25 @@ async function updateStockTicker() {
   // Category tabs
   if (categoryTabs.length > 0) {
     categoryTabs.forEach(tab => {
+      if (tab.hasAttribute('data-stock-view')) return;
       tab.addEventListener('click', () => {
         categoryTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         loadCategoryStocks(tab.dataset.category);
+      });
+    });
+  }
+
+  if (viewTabs.length > 0) {
+    viewTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        currentStockView = tab.dataset.stockView;
+        viewTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        viewPanels.forEach(panel => {
+          panel.style.display =
+            panel.dataset.stockViewPanel === currentStockView ? '' : 'none';
+        });
       });
     });
   }
@@ -839,28 +960,36 @@ async function updateStockTicker() {
     });
   }
   
-  // Initialize with default stock
+  // Initialize selector with optional URL symbol; otherwise keep empty until user selects.
   if (stockSelect) {
     const urlParams = new URLSearchParams(window.location.search);
     const symbolParam = urlParams.get('symbol');
     if (symbolParam) {
       currentSymbol = symbolParam.toUpperCase();
       stockSelect.value = currentSymbol;
+      updateStockDetails(currentSymbol);
     } else {
-      stockSelect.value = currentSymbol;
+      stockSelect.value = '';
+      showEmptyChartState();
     }
-    updateStockDetails(currentSymbol);
   }
   
   // Load initial category
   loadCategoryStocks('financials');
+
+  setInterval(() => {
+    loadCategoryStocks(currentCategory);
+    if (window.lastStockSearchQuery && String(window.lastStockSearchQuery).trim()) {
+      searchStock(String(window.lastStockSearchQuery).trim());
+    }
+  }, 60000);
   
   // Update ticker if container exists
   if (tickerContainer) {
     updateStockTicker();
     setInterval(() => {
       updateStockTicker();
-    }, 30000);
+    }, 60000);
     
     tickerContainer.addEventListener('click', (e) => {
       const stockCard = e.target.closest('.stock-card');
@@ -875,6 +1004,7 @@ async function updateStockTicker() {
 // Export for use in other pages
 window.StockTicker = {
   update: updateStockTicker,
-  fetchData: fetchStockData
+  fetchData: fetchStockData,
+  fetchDaily: fetchDailyChartQuote
 };
 
