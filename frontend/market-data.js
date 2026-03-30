@@ -168,6 +168,20 @@ function isBadProxyPayload(data) {
 
 /** Returns parsed JSON from Yahoo (any endpoint) or null. */
 async function fetchJsonThroughProxies(url) {
+  async function fetchWithTimeout(resourceUrl) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      return await fetch(resourceUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function fromTextResponse(response) {
     if (!response.ok) return null;
     const text = await response.text();
@@ -185,10 +199,7 @@ async function fetchJsonThroughProxies(url) {
   const attempts = [
     async () => {
       const u = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-      const response = await fetch(u, {
-        method: 'GET',
-        headers: { Accept: 'application/json' }
-      });
+      const response = await fetchWithTimeout(u);
       if (!response.ok) return null;
       const wrapped = await response.json();
       if (!wrapped || !wrapped.contents) return null;
@@ -202,37 +213,24 @@ async function fetchJsonThroughProxies(url) {
       return data;
     },
     async () => {
+      const proxied = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      const response = await fetchWithTimeout(proxied);
+      return fromTextResponse(response);
+    },
+    async () => {
+      const thingproxy =
+        'https://thingproxy.freeboard.io/fetch/' + encodeURIComponent(url);
+      const response = await fetchWithTimeout(thingproxy);
+      return fromTextResponse(response);
+    },
+    async () => {
       const proxyUrl =
         'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-      const response = await fetch(proxyUrl, {
-        method: 'GET',
-        headers: { Accept: 'application/json' }
-      });
+      const response = await fetchWithTimeout(proxyUrl);
       return fromTextResponse(response);
     },
     async () => {
-      const proxied = 'https://corsproxy.io/?' + encodeURIComponent(url);
-      const response = await fetch(proxied, {
-        method: 'GET',
-        headers: { Accept: 'application/json' }
-      });
-      return fromTextResponse(response);
-    },
-    async () => {
-      const codetabs =
-        'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(url);
-      const response = await fetch(codetabs, {
-        method: 'GET',
-        headers: { Accept: 'application/json' }
-      });
-      return fromTextResponse(response);
-    },
-    async () => {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        mode: 'cors'
-      });
+      const response = await fetchWithTimeout(url);
       return fromTextResponse(response);
     }
   ];

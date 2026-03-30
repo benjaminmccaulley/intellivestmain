@@ -76,9 +76,58 @@ let currentTimeframe = '1D';
 let currentFilter = 'all';
 let analysisPanelOpen = false;
 let lastChartStockData = null;
+let stockCardObserver = null;
+let refreshIntervalId = null;
+let batchIsRunning = false;
+const visibleCardSymbols = new Set();
+const pendingCardSymbols = [];
+const CARD_BATCH_SIZE = 5;
+const BATCH_DELAY_MS = 300;
+const REFRESH_INTERVAL_MS = 180000;
+
+const PROXIES = [
+  'https://api.allorigins.win/get?url=',
+  'https://corsproxy.io/?',
+  'https://thingproxy.freeboard.io/fetch/'
+];
+
+function getCachedStock(ticker) {
+  try {
+    const raw = localStorage.getItem('stock_' + ticker);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.data || !parsed.timestamp) return null;
+    const fiveMinutes = 5 * 60 * 1000;
+    if (Date.now() - parsed.timestamp < fiveMinutes) return parsed.data;
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCachedStock(ticker, data) {
+  try {
+    localStorage.setItem(
+      'stock_' + ticker,
+      JSON.stringify({ data: data, timestamp: Date.now() })
+    );
+  } catch (e) {
+    /* ignore quota errors */
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /** Daily % via market-data.js (Yahoo v7 quote + v8 chart fallbacks). */
-async function fetchDailyChartQuote(symbol) {
+async function fetchDailyChartQuote(symbol, forceRefresh = false) {
+  if (!forceRefresh) {
+    const cached = getCachedStock(symbol);
+    if (cached) {
+      return cached;
+    }
+  }
   const fetcher =
     typeof window.MarketData !== 'undefined' &&
     typeof window.MarketData.fetchDailyStockQuote === 'function'
@@ -109,7 +158,7 @@ async function fetchDailyChartQuote(symbol) {
       percentNa: true
     };
   }
-  return {
+  const out = {
     symbol,
     name: r.name,
     price: r.price,
@@ -118,6 +167,8 @@ async function fetchDailyChartQuote(symbol) {
     volume: r.volume,
     error: false
   };
+  setCachedStock(symbol, out);
+  return out;
 }
 
 function formatDailyPctHtml(stock) {
@@ -151,6 +202,31 @@ function chartParamsForTimeframe(tf) {
   }
 }
 
+async function fetchWithFallback(url) {
+  for (const proxy of PROXIES) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(proxy + encodeURIComponent(url), {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!response.ok) continue;
+
+      if (proxy.includes('/get?url=')) {
+        const wrapped = await response.json();
+        if (!wrapped || !wrapped.contents) continue;
+        return JSON.parse(wrapped.contents);
+      }
+      return await response.json();
+    } catch (e) {
+      /* try next proxy */
+    }
+  }
+  return null;
+}
+
 /** Yahoo chart via corsproxy.io — used for analysis panel + chart ranges. */
 async function fetchCorsChartStockData(symbol, timeframe) {
   const { interval, range } = chartParamsForTimeframe(timeframe);
@@ -162,10 +238,8 @@ async function fetchCorsChartStockData(symbol, timeframe) {
     '&range=' +
     range +
     '&includePrePost=false';
-  const proxied = 'https://corsproxy.io/?' + encodeURIComponent(yahooUrl);
-  const res = await fetch(proxied, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error('chart fetch failed');
-  const data = await res.json();
+  const data = await fetchWithFallback(yahooUrl);
+  if (!data) throw new Error('chart fetch failed');
   const result = data.chart?.result?.[0];
   if (!result) throw new Error('no chart data');
   const meta = result.meta;
@@ -576,6 +650,96 @@ function createStockCard(stock, onClickHandler = null) {
   `;
 }
 
+function createSkeletonCard(symbol) {
+  return `
+    <div class="stock-card-category stock-card-skeleton" data-symbol="${symbol}" onclick="selectStockFromCard('${symbol}')">
+      <div class="skeleton skeleton-line skeleton-line-short"></div>
+      <div class="skeleton skeleton-line skeleton-line-mid"></div>
+      <div class="skeleton skeleton-line skeleton-line-price"></div>
+    </div>
+  `;
+}
+
+function renderLoadedCardIntoElement(el, stock) {
+  const pct = formatDailyPctHtml(stock);
+  const selectedClass = currentSymbol && stock.symbol === currentSymbol ? ' stock-card-selected' : '';
+  const priceLine = stock.error || !stock.price ? '—' : `$${stock.price.toFixed(2)}`;
+  el.className = `stock-card-category ${stock.error ? 'soft-error' : ''}${selectedClass}`;
+  el.innerHTML = `
+    <div class="stock-card-header-category">
+      <div class="stock-card-symbol">${stock.symbol}</div>
+      <div class="stock-card-change ${pct.cls}">${pct.html}</div>
+    </div>
+    <div class="stock-card-name-category">${stock.name || stock.symbol}</div>
+    <div class="stock-card-price-category">${priceLine}</div>
+  `;
+}
+
+async function loadAndRenderCardBySymbol(symbol, forceRefresh = false) {
+  const container = document.getElementById('categoryStocks');
+  if (!container) return;
+  const card = container.querySelector(`.stock-card-category[data-symbol="${symbol}"]`);
+  if (!card) return;
+  const data = await fetchDailyChartQuote(symbol, forceRefresh).catch(() => ({
+    symbol,
+    name: symbol,
+    price: 0,
+    change: 0,
+    changePercent: NaN,
+    volume: 0,
+    error: true,
+    percentNa: true
+  }));
+  renderLoadedCardIntoElement(card, data);
+}
+
+async function fetchInBatches(tickers, batchSize = CARD_BATCH_SIZE, forceRefresh = false) {
+  if (!tickers || tickers.length === 0) return;
+  for (let i = 0; i < tickers.length; i += batchSize) {
+    const batch = tickers.slice(i, i + batchSize);
+    await Promise.all(batch.map(t => loadAndRenderCardBySymbol(t, forceRefresh)));
+    if (i + batchSize < tickers.length) {
+      await sleep(BATCH_DELAY_MS);
+    }
+  }
+}
+
+function drainPendingBatches(forceRefresh = false) {
+  if (batchIsRunning || pendingCardSymbols.length === 0) return;
+  batchIsRunning = true;
+  const symbols = Array.from(new Set(pendingCardSymbols.splice(0, pendingCardSymbols.length)));
+  fetchInBatches(symbols, CARD_BATCH_SIZE, forceRefresh)
+    .finally(() => {
+      batchIsRunning = false;
+      if (pendingCardSymbols.length > 0) {
+        drainPendingBatches(forceRefresh);
+      }
+    });
+}
+
+function queueVisibleSymbol(symbol, forceRefresh = false) {
+  if (!symbol) return;
+  if (!pendingCardSymbols.includes(symbol)) pendingCardSymbols.push(symbol);
+  drainPendingBatches(forceRefresh);
+}
+
+function setupCardIntersectionObserver() {
+  if (stockCardObserver) stockCardObserver.disconnect();
+  const cards = document.querySelectorAll('#categoryStocks .stock-card-category[data-symbol]');
+  stockCardObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const sym = entry.target.dataset.symbol;
+      if (!sym) return;
+      if (entry.isIntersecting) {
+        visibleCardSymbols.add(sym);
+        queueVisibleSymbol(sym, false);
+        stockCardObserver.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '100px 0px 150px 0px', threshold: 0.01 });
+  cards.forEach(c => stockCardObserver.observe(c));
+}
+
 // Search for stocks - universal Yahoo Finance search
 async function searchStock(query) {
   const resultsDiv = document.getElementById('searchResults');
@@ -662,57 +826,23 @@ function formatMarketCap(marketCap) {
   return '$' + marketCap.toFixed(0);
 }
 
-// Load category stocks - predefined sectors, sorted by volume (most active)
-async function filterStocksByCategory(filterKey) {
-  const symbols = getSymbolsForFilter(filterKey);
-  if (symbols.length === 0) return [];
-  try {
-    const stockDataPromises = symbols.map(sym =>
-      fetchDailyChartQuote(sym).catch(() => ({
-        symbol: sym,
-        name: sym,
-        price: 0,
-        change: 0,
-        changePercent: NaN,
-        volume: 0,
-        error: true,
-        percentNa: true
-      }))
-    );
-    const stocks = await Promise.all(stockDataPromises);
-    stocks.sort((a, b) => {
-      const bad = x => (x.error || x.percentNa ? 1 : 0);
-      if (bad(a) !== bad(b)) return bad(a) - bad(b);
-      return (b.volume || 0) - (a.volume || 0);
-    });
-    return stocks;
-  } catch (error) {
-    console.error('Error loading category:', error);
-    return [];
-  }
-}
-
 // Load category stocks with dynamic filtering
 async function loadCategoryStocks(filterKey) {
   currentFilter = filterKey;
   const container = document.getElementById('categoryStocks');
   if (!container) return;
-  
-  container.innerHTML = '<div class="category-loading">Loading most active stocks...</div>';
-  
-  try {
-    const stocks = await filterStocksByCategory(filterKey);
-    
-    if (stocks.length === 0) {
-      container.innerHTML = '<div class="category-loading">No stocks available for this category right now.</div>';
-      return;
-    }
-    
-    container.innerHTML = stocks.map(stock => createStockCard(stock, true)).join('');
-  } catch (error) {
-    console.error('Error loading category stocks:', error);
-    container.innerHTML = '<div class="category-loading">Unable to load stocks. Please try again.</div>';
+
+  const symbols = getSymbolsForFilter(filterKey);
+  visibleCardSymbols.clear();
+  pendingCardSymbols.splice(0, pendingCardSymbols.length);
+
+  if (symbols.length === 0) {
+    container.innerHTML = '<div class="category-loading">No stocks available for this category right now.</div>';
+    return;
   }
+
+  container.innerHTML = symbols.map(sym => createSkeletonCard(sym)).join('');
+  setupCardIntersectionObserver();
 }
 
 function openAnalysisPanel() {
@@ -980,6 +1110,24 @@ function showEmptyChartState() {
   }
 }
 
+function refreshVisibleCards() {
+  if (document.hidden) return;
+  const symbols = Array.from(visibleCardSymbols);
+  if (symbols.length === 0) return;
+  symbols.forEach(sym => queueVisibleSymbol(sym, true));
+}
+
+function startRefresh() {
+  if (refreshIntervalId) return;
+  refreshIntervalId = setInterval(refreshVisibleCards, REFRESH_INTERVAL_MS);
+}
+
+function stopRefresh() {
+  if (!refreshIntervalId) return;
+  clearInterval(refreshIntervalId);
+  refreshIntervalId = null;
+}
+
 // Update stock ticker
 async function updateStockTicker() {
   const tickerContainer = document.getElementById('stocksTicker');
@@ -1125,20 +1273,21 @@ async function updateStockTicker() {
   }
 
   loadCategoryStocks('all');
-
-  setInterval(() => {
-    loadCategoryStocks(currentFilter);
-    if (window.lastStockSearchQuery && String(window.lastStockSearchQuery).trim()) {
-      searchStock(String(window.lastStockSearchQuery).trim());
+  startRefresh();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopRefresh();
+    else {
+      startRefresh();
+      refreshVisibleCards();
     }
-  }, 60000);
+  });
   
   // Update ticker if container exists
   if (tickerContainer) {
     updateStockTicker();
     setInterval(() => {
-      updateStockTicker();
-    }, 60000);
+      if (!document.hidden) updateStockTicker();
+    }, REFRESH_INTERVAL_MS);
     
     tickerContainer.addEventListener('click', (e) => {
       const stockCard = e.target.closest('.stock-card');
