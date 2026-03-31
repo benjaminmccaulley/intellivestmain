@@ -214,28 +214,6 @@ function formatVolume(volume) {
   // Load watchlist
   loadWatchlist();
   
-  // View switching
-  const watchlistBtn = document.getElementById('watchlistBtn');
-  const educationBtn = document.getElementById('educationBtn');
-  const watchlistView = document.getElementById('watchlistView');
-  const educationView = document.getElementById('educationView');
-  
-  if (watchlistBtn && educationBtn) {
-    watchlistBtn.addEventListener('click', () => {
-      watchlistBtn.classList.add('active');
-      educationBtn.classList.remove('active');
-      watchlistView.classList.add('active');
-      educationView.classList.remove('active');
-    });
-    
-    educationBtn.addEventListener('click', () => {
-      educationBtn.classList.add('active');
-      watchlistBtn.classList.remove('active');
-      educationView.classList.add('active');
-      watchlistView.classList.remove('active');
-    });
-  }
-  
   // Search and add stock
   const stockSearch = document.getElementById('stockSearch');
   const addStockBtn = document.getElementById('addStockBtn');

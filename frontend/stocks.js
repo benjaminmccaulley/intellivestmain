@@ -9,6 +9,9 @@ const STOCK_NAMES = {
 
 // Predefined category symbols (most active by sector - sorted by volume when displayed)
 const CATEGORY_SYMBOLS = {
+  technology: [
+    'AAPL', 'MSFT', 'GOOGL', 'NVDA', 'META', 'AMD', 'AVGO', 'CRM', 'ORCL', 'ADBE', 'NFLX', 'CSCO'
+  ],
   financials: [
     'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'AXP', 'USB', 'PNC', 'BK', 'TFC', 'COF', 'AIG', 'MET'
   ],
@@ -18,18 +21,274 @@ const CATEGORY_SYMBOLS = {
   industrials: [
     'CAT', 'DE', 'UNP', 'UPS', 'RTX', 'LMT', 'GE', 'HON', 'BA', 'NOC', 'MMM', 'WM', 'ITW', 'ETN', 'PH', 'EMR'
   ],
+  healthcare: [
+    'UNH', 'JNJ', 'LLY', 'ABBV', 'MRK', 'TMO', 'PFE', 'CVS', 'AMGN', 'GILD', 'ISRG', 'BMY'
+  ],
   'consumer-discretionary': [
     'AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'LOW', 'BKNG', 'TGT', 'MAR', 'CMG', 'RCL', 'GM', 'F', 'ROST', 'ORLY'
   ],
   'consumer-staples': [
     'WMT', 'PG', 'KO', 'PEP', 'COST', 'PM', 'MO', 'CL', 'KMB', 'MDLZ', 'GIS', 'KHC', 'KR', 'HSY', 'ADM', 'EL'
+  ],
+  minerals: [
+    'BHP', 'RIO', 'VALE', 'FCX', 'NEM', 'GOLD', 'AA', 'ALB', 'MP', 'TECK',
+    'SCCO', 'HL', 'PAAS', 'AG', 'WPM', 'SBSW', 'UUUU', 'DNN', 'UEC', 'NG'
   ]
 };
 
+function getSymbolsForFilter(filterKey) {
+  if (filterKey === 'all') {
+    const set = new Set();
+    [
+      'technology',
+      'energy',
+      'financials',
+      'healthcare',
+      'industrials',
+      'consumer-discretionary',
+      'consumer-staples',
+      'minerals'
+    ].forEach(function (k) {
+      (CATEGORY_SYMBOLS[k] || []).forEach(function (s) {
+        set.add(s);
+      });
+    });
+    return Array.from(set);
+  }
+  if (filterKey === 'finance') return CATEGORY_SYMBOLS.financials || [];
+  if (filterKey === 'consumer') {
+    const set = new Set([
+      ...(CATEGORY_SYMBOLS['consumer-discretionary'] || []),
+      ...(CATEGORY_SYMBOLS['consumer-staples'] || [])
+    ]);
+    return Array.from(set);
+  }
+  if (filterKey === 'technology') return CATEGORY_SYMBOLS.technology || [];
+  if (filterKey === 'healthcare') return CATEGORY_SYMBOLS.healthcare || [];
+  if (filterKey === 'energy') return CATEGORY_SYMBOLS.energy || [];
+  if (filterKey === 'minerals') return CATEGORY_SYMBOLS.minerals || [];
+  return [];
+}
+
 let stockChart = null;
-let currentSymbol = 'AAPL';
+let currentSymbol = '';
 let currentTimeframe = '1D';
-let currentCategory = 'financials';
+let currentFilter = 'all';
+let analysisPanelOpen = false;
+let lastChartStockData = null;
+let stockCardObserver = null;
+let refreshIntervalId = null;
+let batchIsRunning = false;
+const visibleCardSymbols = new Set();
+const pendingCardSymbols = [];
+const CARD_BATCH_SIZE = 5;
+const BATCH_DELAY_MS = 300;
+const REFRESH_INTERVAL_MS = 180000;
+
+const PROXIES = [
+  'https://api.allorigins.win/get?url=',
+  'https://corsproxy.io/?',
+  'https://thingproxy.freeboard.io/fetch/'
+];
+
+function getCachedStock(ticker) {
+  try {
+    const raw = localStorage.getItem('stock_' + ticker);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.data || !parsed.timestamp) return null;
+    const fiveMinutes = 5 * 60 * 1000;
+    if (Date.now() - parsed.timestamp < fiveMinutes) return parsed.data;
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCachedStock(ticker, data) {
+  try {
+    localStorage.setItem(
+      'stock_' + ticker,
+      JSON.stringify({ data: data, timestamp: Date.now() })
+    );
+  } catch (e) {
+    /* ignore quota errors */
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Daily % via market-data.js (Yahoo v7 quote + v8 chart fallbacks). */
+async function fetchDailyChartQuote(symbol, forceRefresh = false) {
+  if (!forceRefresh) {
+    const cached = getCachedStock(symbol);
+    if (cached) {
+      return cached;
+    }
+  }
+  const fetcher =
+    typeof window.MarketData !== 'undefined' &&
+    typeof window.MarketData.fetchDailyStockQuote === 'function'
+      ? window.MarketData.fetchDailyStockQuote
+      : null;
+  if (!fetcher) {
+    return {
+      symbol,
+      name: symbol,
+      price: 0,
+      change: 0,
+      changePercent: NaN,
+      volume: 0,
+      error: true,
+      percentNa: true
+    };
+  }
+  const r = await fetcher(symbol);
+  if (r.na) {
+    return {
+      symbol,
+      name: symbol,
+      price: 0,
+      change: 0,
+      changePercent: NaN,
+      volume: 0,
+      error: true,
+      percentNa: true
+    };
+  }
+  const out = {
+    symbol,
+    name: r.name,
+    price: r.price,
+    change: r.change,
+    changePercent: r.changePercent,
+    volume: r.volume,
+    error: false
+  };
+  setCachedStock(symbol, out);
+  return out;
+}
+
+function formatDailyPctHtml(stock) {
+  if (stock.error || stock.percentNa || stock.changePercent == null || Number.isNaN(stock.changePercent)) {
+    return { cls: 'pct-na', html: 'N/A' };
+  }
+  const isPositive = stock.change >= 0;
+  const line =
+    isPositive
+      ? `▲ +${stock.changePercent.toFixed(2)}%`
+      : `▼ ${stock.changePercent.toFixed(2)}%`;
+  return { cls: isPositive ? 'positive' : 'negative', html: line };
+}
+
+function chartParamsForTimeframe(tf) {
+  switch (tf) {
+    case '1D':
+      return { interval: '5m', range: '1d' };
+    case '1W':
+      return { interval: '1h', range: '5d' };
+    case '1M':
+      return { interval: '1d', range: '1mo' };
+    case '3M':
+      return { interval: '1d', range: '3mo' };
+    case '6M':
+      return { interval: '1d', range: '6mo' };
+    case '1Y':
+      return { interval: '1d', range: '1y' };
+    default:
+      return { interval: '1d', range: '1mo' };
+  }
+}
+
+async function fetchWithFallback(url) {
+  for (const proxy of PROXIES) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(proxy + encodeURIComponent(url), {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!response.ok) continue;
+
+      if (proxy.includes('/get?url=')) {
+        const wrapped = await response.json();
+        if (!wrapped || !wrapped.contents) continue;
+        return JSON.parse(wrapped.contents);
+      }
+      return await response.json();
+    } catch (e) {
+      /* try next proxy */
+    }
+  }
+  return null;
+}
+
+/** Yahoo chart via corsproxy.io — used for analysis panel + chart ranges. */
+async function fetchCorsChartStockData(symbol, timeframe) {
+  const { interval, range } = chartParamsForTimeframe(timeframe);
+  const yahooUrl =
+    'https://query1.finance.yahoo.com/v8/finance/chart/' +
+    encodeURIComponent(symbol) +
+    '?interval=' +
+    interval +
+    '&range=' +
+    range +
+    '&includePrePost=false';
+  const data = await fetchWithFallback(yahooUrl);
+  if (!data) throw new Error('chart fetch failed');
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error('no chart data');
+  const meta = result.meta;
+  const quote = result.indicators?.quote?.[0];
+  const timestamps = result.timestamp || [];
+  const closes = quote?.close || [];
+  const validData = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    if (closes[i] != null && !Number.isNaN(Number(closes[i]))) {
+      validData.push({ timestamp: timestamps[i], price: closes[i] });
+    }
+  }
+  const lastPrice = validData.length ? validData[validData.length - 1].price : null;
+  const currentPrice =
+    meta.regularMarketPrice != null
+      ? Number(meta.regularMarketPrice)
+      : lastPrice != null
+        ? Number(lastPrice)
+        : NaN;
+  const rawPrev = meta.previousClose != null ? meta.previousClose : meta.chartPreviousClose;
+  const previousClose = rawPrev != null ? Number(rawPrev) : NaN;
+  const change =
+    !Number.isNaN(currentPrice) && !Number.isNaN(previousClose)
+      ? currentPrice - previousClose
+      : 0;
+  const changePercent =
+    !Number.isNaN(previousClose) && previousClose !== 0
+      ? (change / previousClose) * 100
+      : 0;
+  return {
+    symbol,
+    name: meta.longName || meta.shortName || meta.symbol || symbol,
+    price: currentPrice,
+    change,
+    changePercent,
+    open: meta.regularMarketOpen != null ? Number(meta.regularMarketOpen) : previousClose,
+    high: meta.regularMarketDayHigh != null ? Number(meta.regularMarketDayHigh) : null,
+    low: meta.regularMarketDayLow != null ? Number(meta.regularMarketDayLow) : null,
+    volume: meta.regularMarketVolume || 0,
+    marketCap: meta.marketCap || 0,
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh != null ? Number(meta.fiftyTwoWeekHigh) : null,
+    fiftyTwoWeekLow: meta.fiftyTwoWeekLow != null ? Number(meta.fiftyTwoWeekLow) : null,
+    trailingPE: meta.trailingPE != null ? Number(meta.trailingPE) : null,
+    industry: meta.sector || meta.industry || '—',
+    chartRangeScoped: true,
+    timestamps: validData.map(d => d.timestamp),
+    prices: validData.map(d => d.price)
+  };
+}
 
 // API Cache - stores responses with configurable TTL
 const apiCache = {
@@ -347,6 +606,7 @@ async function fetchStockData(symbol, useCache = true, options = {}) {
         marketCap: marketCap,
         industry: industry,
         analystRating: analystRating,
+        chartRangeScoped: false,
         timestamps: validData.map(d => d.timestamp),
         prices: validData.map(d => d.price)
       };
@@ -365,30 +625,119 @@ async function fetchStockData(symbol, useCache = true, options = {}) {
 
 // Reusable Stock Card Component
 function createStockCard(stock, onClickHandler = null) {
-  if (!stock || stock.error) {
-    return `
-      <div class="stock-card-category error">
-        <div class="stock-card-symbol">${stock?.symbol || 'N/A'}</div>
-        <div class="stock-card-price">Error</div>
-      </div>
-    `;
+  if (!stock) {
+    return '';
   }
-  
-      const isPositive = stock.change >= 0;
+  const pct = formatDailyPctHtml(stock);
   const onClick = onClickHandler ? `onclick="selectStockFromCard('${stock.symbol}')"` : '';
+  const priceLine =
+    stock.error || !stock.price
+      ? '—'
+      : `$${stock.price.toFixed(2)}`;
 
-      return `
-    <div class="stock-card-category" ${onClick} data-symbol="${stock.symbol}">
+  const selectedClass = currentSymbol && stock.symbol === currentSymbol ? ' stock-card-selected' : '';
+  return `
+    <div class="stock-card-category ${stock.error ? 'soft-error' : ''}${selectedClass}" ${onClick} data-symbol="${stock.symbol}">
       <div class="stock-card-header-category">
-            <div class="stock-card-symbol">${stock.symbol}</div>
-        <div class="stock-card-change ${isPositive ? 'positive' : 'negative'}">
-          ${isPositive ? '+' : ''}${stock.changePercent.toFixed(2)}%
-            </div>
-          </div>
-      <div class="stock-card-name-category">${stock.name}</div>
-      <div class="stock-card-price-category">$${stock.price.toFixed(2)}</div>
+        <div class="stock-card-symbol">${stock.symbol}</div>
+        <div class="stock-card-change ${pct.cls}">
+          ${pct.html}
         </div>
-      `;
+      </div>
+      <div class="stock-card-name-category">${stock.name || stock.symbol}</div>
+      <div class="stock-card-price-category">${priceLine}</div>
+    </div>
+  `;
+}
+
+function createSkeletonCard(symbol) {
+  return `
+    <div class="stock-card-category stock-card-skeleton" data-symbol="${symbol}" onclick="selectStockFromCard('${symbol}')">
+      <div class="skeleton skeleton-line skeleton-line-short"></div>
+      <div class="skeleton skeleton-line skeleton-line-mid"></div>
+      <div class="skeleton skeleton-line skeleton-line-price"></div>
+    </div>
+  `;
+}
+
+function renderLoadedCardIntoElement(el, stock) {
+  const pct = formatDailyPctHtml(stock);
+  const selectedClass = currentSymbol && stock.symbol === currentSymbol ? ' stock-card-selected' : '';
+  const priceLine = stock.error || !stock.price ? '—' : `$${stock.price.toFixed(2)}`;
+  el.className = `stock-card-category ${stock.error ? 'soft-error' : ''}${selectedClass}`;
+  el.innerHTML = `
+    <div class="stock-card-header-category">
+      <div class="stock-card-symbol">${stock.symbol}</div>
+      <div class="stock-card-change ${pct.cls}">${pct.html}</div>
+    </div>
+    <div class="stock-card-name-category">${stock.name || stock.symbol}</div>
+    <div class="stock-card-price-category">${priceLine}</div>
+  `;
+}
+
+async function loadAndRenderCardBySymbol(symbol, forceRefresh = false) {
+  const container = document.getElementById('categoryStocks');
+  if (!container) return;
+  const card = container.querySelector(`.stock-card-category[data-symbol="${symbol}"]`);
+  if (!card) return;
+  const data = await fetchDailyChartQuote(symbol, forceRefresh).catch(() => ({
+    symbol,
+    name: symbol,
+    price: 0,
+    change: 0,
+    changePercent: NaN,
+    volume: 0,
+    error: true,
+    percentNa: true
+  }));
+  renderLoadedCardIntoElement(card, data);
+}
+
+async function fetchInBatches(tickers, batchSize = CARD_BATCH_SIZE, forceRefresh = false) {
+  if (!tickers || tickers.length === 0) return;
+  for (let i = 0; i < tickers.length; i += batchSize) {
+    const batch = tickers.slice(i, i + batchSize);
+    await Promise.all(batch.map(t => loadAndRenderCardBySymbol(t, forceRefresh)));
+    if (i + batchSize < tickers.length) {
+      await sleep(BATCH_DELAY_MS);
+    }
+  }
+}
+
+function drainPendingBatches(forceRefresh = false) {
+  if (batchIsRunning || pendingCardSymbols.length === 0) return;
+  batchIsRunning = true;
+  const symbols = Array.from(new Set(pendingCardSymbols.splice(0, pendingCardSymbols.length)));
+  fetchInBatches(symbols, CARD_BATCH_SIZE, forceRefresh)
+    .finally(() => {
+      batchIsRunning = false;
+      if (pendingCardSymbols.length > 0) {
+        drainPendingBatches(forceRefresh);
+      }
+    });
+}
+
+function queueVisibleSymbol(symbol, forceRefresh = false) {
+  if (!symbol) return;
+  if (!pendingCardSymbols.includes(symbol)) pendingCardSymbols.push(symbol);
+  drainPendingBatches(forceRefresh);
+}
+
+function setupCardIntersectionObserver() {
+  if (stockCardObserver) stockCardObserver.disconnect();
+  const cards = document.querySelectorAll('#categoryStocks .stock-card-category[data-symbol]');
+  stockCardObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const sym = entry.target.dataset.symbol;
+      if (!sym) return;
+      if (entry.isIntersecting) {
+        visibleCardSymbols.add(sym);
+        queueVisibleSymbol(sym, false);
+        stockCardObserver.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '100px 0px 150px 0px', threshold: 0.01 });
+  cards.forEach(c => stockCardObserver.observe(c));
 }
 
 // Search for stocks - universal Yahoo Finance search
@@ -396,8 +745,10 @@ async function searchStock(query) {
   const resultsDiv = document.getElementById('searchResults');
   if (!query.trim()) {
     resultsDiv.innerHTML = '';
+    window.lastStockSearchQuery = '';
     return;
   }
+  window.lastStockSearchQuery = query.trim();
   resultsDiv.innerHTML = '<div class="search-loading">Searching Yahoo Finance...</div>';
 
   const suggestions = await searchYahooStocks(query);
@@ -409,7 +760,10 @@ async function searchStock(query) {
   resultsDiv.innerHTML = '<div class="search-loading">Loading prices...</div>';
   const symbols = suggestions.map(s => s.symbol);
   const stockDataPromises = symbols.map(sym =>
-    fetchStockData(sym, true, { includeDetails: false }).catch(() => ({ symbol: sym, name: suggestions.find(s => s.symbol === sym)?.name || sym, error: true }))
+    fetchDailyChartQuote(sym).then((d) => ({
+      ...d,
+      name: d.name && d.name !== sym ? d.name : (suggestions.find(q => q.symbol === sym)?.name || d.name)
+    })).catch(() => ({ symbol: sym, name: suggestions.find(q => q.symbol === sym)?.name || sym, error: true }))
   );
   const stocks = await Promise.all(stockDataPromises);
   const valid = stocks.filter(s => !s.error && s.price > 0);
@@ -427,19 +781,29 @@ function displaySearchResults(stocks) {
     <div class="search-results-header">Found ${stocks.length} stock(s)</div>
     <div class="search-results-grid">
       ${stocks.map(stock => {
-        const isPositive = stock.change >= 0;
+        const pct = formatDailyPctHtml(stock);
+        const move =
+          stock.error || stock.percentNa || Number.isNaN(stock.change)
+            ? '—'
+            : `${stock.change >= 0 ? '+' : ''}${stock.change.toFixed(2)} today`;
+        const moveCls =
+          stock.error || stock.percentNa
+            ? 'pct-na'
+            : stock.change >= 0
+              ? 'positive'
+              : 'negative';
         return `
           <div class="search-result-card" onclick="selectStockFromSearch('${stock.symbol}')">
             <div class="search-result-card-header">
               <div class="search-result-symbol">${stock.symbol}</div>
-              <span class="search-result-change ${isPositive ? 'positive' : 'negative'}">
-                ${isPositive ? '+' : ''}${stock.changePercent.toFixed(2)}%
+              <span class="search-result-change ${pct.cls}">
+                ${pct.html}
               </span>
             </div>
             <div class="search-result-name">${(stock.name || stock.symbol).slice(0, 35)}${(stock.name || '').length > 35 ? '…' : ''}</div>
-            <div class="search-result-price">$${stock.price.toFixed(2)}</div>
-            <div class="search-result-movement ${isPositive ? 'positive' : 'negative'}">
-              ${isPositive ? '+' : ''}${stock.change.toFixed(2)} today
+            <div class="search-result-price">${stock.price > 0 ? `$${stock.price.toFixed(2)}` : '—'}</div>
+            <div class="search-result-movement ${moveCls}">
+              ${move}
             </div>
             <button class="btn primary btn-sm" onclick="event.stopPropagation(); selectStockFromSearch('${stock.symbol}')">View Details</button>
           </div>
@@ -462,126 +826,148 @@ function formatMarketCap(marketCap) {
   return '$' + marketCap.toFixed(0);
 }
 
-// Load category stocks - predefined sectors, sorted by volume (most active)
-async function filterStocksByCategory(category) {
-  const symbols = CATEGORY_SYMBOLS[category] || [];
-  if (symbols.length === 0) return [];
-  try {
-    const stockDataPromises = symbols.map(sym =>
-      fetchStockData(sym, true, { includeDetails: false }).catch(() => ({ symbol: sym, name: sym, price: 0, change: 0, changePercent: 0, volume: 0, error: true }))
-    );
-    const stocks = await Promise.all(stockDataPromises);
-    const valid = stocks.filter(s => !s.error && s.price > 0);
-    valid.sort((a, b) => (b.volume || 0) - (a.volume || 0));
-    return valid.slice(0, 12);
-  } catch (error) {
-    console.error('Error loading category:', error);
-    return [];
-  }
-}
-
 // Load category stocks with dynamic filtering
-async function loadCategoryStocks(category) {
-  currentCategory = category;
+async function loadCategoryStocks(filterKey) {
+  currentFilter = filterKey;
   const container = document.getElementById('categoryStocks');
   if (!container) return;
-  
-  container.innerHTML = '<div class="category-loading">Loading most active stocks...</div>';
-  
-  try {
-    const stocks = await filterStocksByCategory(category);
-    
-    if (stocks.length === 0) {
-      container.innerHTML = '<div class="category-loading">No stocks available for this category right now.</div>';
-      return;
-    }
-    
-    // Filter out error stocks and ensure we have valid data
-    const validStocks = stocks.filter(stock => !stock.error && stock.price > 0);
-    
-    if (validStocks.length === 0) {
-      container.innerHTML = '<div class="category-loading">Unable to load stock data. Please refresh.</div>';
-      return;
-    }
-    
-    container.innerHTML = validStocks.map(stock => createStockCard(stock, true)).join('');
-  } catch (error) {
-    console.error('Error loading category stocks:', error);
-    container.innerHTML = '<div class="category-loading">Unable to load stocks. Please try again.</div>';
+
+  const symbols = getSymbolsForFilter(filterKey);
+  visibleCardSymbols.clear();
+  pendingCardSymbols.splice(0, pendingCardSymbols.length);
+
+  if (symbols.length === 0) {
+    container.innerHTML = '<div class="category-loading">No stocks available for this category right now.</div>';
+    return;
+  }
+
+  container.innerHTML = symbols.map(sym => createSkeletonCard(sym)).join('');
+  setupCardIntersectionObserver();
+}
+
+function openAnalysisPanel() {
+  const panel = document.getElementById('stockAnalysisPanel');
+  const hint = document.getElementById('stockSelectionHint');
+  const body = document.getElementById('analysisPanelBody');
+  if (panel) panel.classList.add('is-open');
+  if (hint) hint.classList.add('is-hidden');
+  if (body) body.hidden = false;
+  if (panel || body) analysisPanelOpen = true;
+}
+
+function closeAnalysisPanel() {
+  const panel = document.getElementById('stockAnalysisPanel');
+  const hint = document.getElementById('stockSelectionHint');
+  const body = document.getElementById('analysisPanelBody');
+  if (panel) panel.classList.remove('is-open');
+  if (hint) hint.classList.remove('is-hidden');
+  if (body) body.hidden = true;
+  analysisPanelOpen = false;
+  currentSymbol = '';
+  highlightSelectedStockCard(null);
+  const stockSelect = document.getElementById('stockSelect');
+  if (stockSelect) stockSelect.value = '';
+  lastChartStockData = null;
+  if (stockChart) {
+    stockChart.destroy();
+    stockChart = null;
   }
 }
 
 // Select stock from card or search
 window.selectStockFromCard = function(symbol) {
+  if (!symbol) return;
+  if (currentSymbol === symbol && analysisPanelOpen) {
+    closeAnalysisPanel();
+    return;
+  }
+  currentSymbol = symbol;
+  highlightSelectedStockCard(symbol);
   const stockSelect = document.getElementById('stockSelect');
   if (stockSelect) stockSelect.value = symbol;
+  openAnalysisPanel();
   updateStockDetails(symbol);
-  // Scroll to analysis section
-  const analysisSection = document.querySelector('.stocks-analysis-section');
-  if (analysisSection) {
-    analysisSection.scrollIntoView({ behavior: 'smooth' });
-  }
 };
 
 window.selectStockFromSearch = function(symbol) {
-    const stockSelect = document.getElementById('stockSelect');
+  if (!symbol) return;
+  currentSymbol = symbol;
+  highlightSelectedStockCard(symbol);
+  const stockSelect = document.getElementById('stockSelect');
   if (stockSelect) stockSelect.value = symbol;
+  openAnalysisPanel();
   updateStockDetails(symbol);
-  // Scroll to analysis section
-  const analysisSection = document.querySelector('.stocks-analysis-section');
-  if (analysisSection) {
-    analysisSection.scrollIntoView({ behavior: 'smooth' });
-  }
 };
 
-// Update stock details (enhanced version)
+function highlightSelectedStockCard(symbol) {
+  const cards = document.querySelectorAll('.stock-card-category[data-symbol]');
+  cards.forEach(card => {
+    if (symbol && card.dataset.symbol === symbol) card.classList.add('stock-card-selected');
+    else card.classList.remove('stock-card-selected');
+  });
+}
+
+// Update stock details (Yahoo chart via corsproxy.io)
 async function updateStockDetails(symbol) {
+  if (!symbol) return;
   currentSymbol = symbol;
-  
+
   const priceElement = document.getElementById('stockPrice');
-  if (priceElement) priceElement.textContent = 'Loading...';
-  
+  if (priceElement) priceElement.textContent = 'Loading…';
+
   try {
-    const stockData = await fetchStockData(symbol);
-    
+    const stockData = await fetchCorsChartStockData(symbol, currentTimeframe);
+    lastChartStockData = stockData;
+
     const nameElement = document.getElementById('selectedStockName');
     const symbolElement = document.getElementById('selectedStockSymbol');
     const priceEl = document.getElementById('stockPrice');
-    
+
     if (nameElement) nameElement.textContent = stockData.name;
     if (symbolElement) symbolElement.textContent = stockData.symbol;
-    if (priceEl) priceEl.textContent = `$${stockData.price.toFixed(2)}`;
-    
+    if (priceEl && !Number.isNaN(stockData.price)) priceEl.textContent = `$${stockData.price.toFixed(2)}`;
+
     const isPositive = stockData.change >= 0;
     const changeElement = document.getElementById('priceChange');
     if (changeElement) {
-      changeElement.textContent = `${isPositive ? '+' : ''}${stockData.change.toFixed(2)} (${isPositive ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`;
+      changeElement.textContent = `${isPositive ? '▲' : '▼'} ${isPositive ? '+' : ''}${stockData.change.toFixed(2)} (${isPositive ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`;
       changeElement.className = `price-change ${isPositive ? 'positive' : 'negative'}`;
     }
-    
-    // Update all stats
+
     const marketCapEl = document.getElementById('statMarketCap');
-    const industryEl = document.getElementById('statIndustry');
-    const openEl = document.getElementById('statOpen');
-    const highEl = document.getElementById('statHigh');
-    const lowEl = document.getElementById('statLow');
     const volumeEl = document.getElementById('statVolume');
-    const ratingEl = document.getElementById('statRating');
-    
+    const hi52 = document.getElementById('stat52High');
+    const lo52 = document.getElementById('stat52Low');
+    const peEl = document.getElementById('statPE');
+
     if (marketCapEl) marketCapEl.textContent = formatMarketCap(stockData.marketCap);
-    if (industryEl) industryEl.textContent = stockData.industry;
-    if (openEl) openEl.textContent = `$${stockData.open.toFixed(2)}`;
-    if (highEl) highEl.textContent = `$${stockData.high.toFixed(2)}`;
-    if (lowEl) lowEl.textContent = `$${stockData.low.toFixed(2)}`;
-    if (volumeEl) volumeEl.textContent = formatVolume(stockData.volume);
-    if (ratingEl) ratingEl.textContent = stockData.analystRating || 'N/A';
-    
-    // Update chart
+    if (volumeEl) volumeEl.textContent = formatVolume(stockData.volume || 0);
+    if (hi52) {
+      hi52.textContent =
+        stockData.fiftyTwoWeekHigh != null && !Number.isNaN(stockData.fiftyTwoWeekHigh)
+          ? `$${stockData.fiftyTwoWeekHigh.toFixed(2)}`
+          : '—';
+    }
+    if (lo52) {
+      lo52.textContent =
+        stockData.fiftyTwoWeekLow != null && !Number.isNaN(stockData.fiftyTwoWeekLow)
+          ? `$${stockData.fiftyTwoWeekLow.toFixed(2)}`
+          : '—';
+    }
+    if (peEl) {
+      peEl.textContent =
+        stockData.trailingPE != null && !Number.isNaN(stockData.trailingPE)
+          ? stockData.trailingPE.toFixed(2)
+          : 'N/A';
+    }
+
+    const chartPlaceholder = document.getElementById('stockChartPlaceholder');
+    if (chartPlaceholder) chartPlaceholder.style.display = 'none';
     updateChart(stockData);
   } catch (error) {
     console.error('Error updating stock details:', error);
     const priceEl = document.getElementById('stockPrice');
-    if (priceEl) priceEl.textContent = 'Error loading data';
+    if (priceEl) priceEl.textContent = 'Error';
     alert(`Unable to load data for ${symbol}. Please try again later.`);
   }
 }
@@ -601,21 +987,24 @@ function updateChart(stockData) {
   
   const timestamps = stockData.timestamps;
   const prices = stockData.prices;
-  
-  const now = Date.now() / 1000;
-  let daysBack = 1;
-  
-  switch (currentTimeframe) {
-    case '1D': daysBack = 1; break;
-    case '1W': daysBack = 7; break;
-    case '1M': daysBack = 30; break;
-    case '3M': daysBack = 90; break;
-    case '1Y': daysBack = 365; break;
+
+  let filteredData = timestamps.map((ts, i) => ({ ts, price: prices[i] }))
+    .filter(item => item.price !== null && item.price !== undefined && !isNaN(item.price));
+
+  if (!stockData.chartRangeScoped) {
+    const now = Date.now() / 1000;
+    let daysBack = 1;
+    switch (currentTimeframe) {
+      case '1D': daysBack = 1; break;
+      case '1W': daysBack = 7; break;
+      case '1M': daysBack = 30; break;
+      case '3M': daysBack = 90; break;
+      case '6M': daysBack = 180; break;
+      case '1Y': daysBack = 365; break;
+    }
+    const cutoffTime = now - daysBack * 86400;
+    filteredData = filteredData.filter(item => item.ts >= cutoffTime);
   }
-  
-  const cutoffTime = now - (daysBack * 86400);
-  const filteredData = timestamps.map((ts, i) => ({ ts, price: prices[i] }))
-    .filter(item => item.ts >= cutoffTime && item.price !== null && item.price !== undefined && !isNaN(item.price));
   
   if (filteredData.length === 0) {
     console.error('No data points after filtering');
@@ -711,6 +1100,34 @@ function formatVolume(volume) {
   return volume.toString();
 }
 
+function showEmptyChartState() {
+  closeAnalysisPanel();
+  const chartPlaceholder = document.getElementById('stockChartPlaceholder');
+  if (chartPlaceholder) chartPlaceholder.style.display = 'block';
+  if (stockChart) {
+    stockChart.destroy();
+    stockChart = null;
+  }
+}
+
+function refreshVisibleCards() {
+  if (document.hidden) return;
+  const symbols = Array.from(visibleCardSymbols);
+  if (symbols.length === 0) return;
+  symbols.forEach(sym => queueVisibleSymbol(sym, true));
+}
+
+function startRefresh() {
+  if (refreshIntervalId) return;
+  refreshIntervalId = setInterval(refreshVisibleCards, REFRESH_INTERVAL_MS);
+}
+
+function stopRefresh() {
+  if (!refreshIntervalId) return;
+  clearInterval(refreshIntervalId);
+  refreshIntervalId = null;
+}
+
 // Update stock ticker
 async function updateStockTicker() {
   const tickerContainer = document.getElementById('stocksTicker');
@@ -721,7 +1138,7 @@ async function updateStockTicker() {
   try {
     const stockDataPromises = STOCK_SYMBOLS.map(async (symbol) => {
       try {
-        return await fetchStockData(symbol, true, { includeDetails: false });
+        return await fetchDailyChartQuote(symbol);
       } catch (error) {
         console.error(`Failed to load ${symbol}:`, error);
         return {
@@ -729,8 +1146,9 @@ async function updateStockTicker() {
           name: STOCK_NAMES[symbol] || symbol,
           price: 0,
           change: 0,
-          changePercent: 0,
-          error: true
+          changePercent: NaN,
+          error: true,
+          percentNa: true
         };
       }
     });
@@ -738,28 +1156,17 @@ async function updateStockTicker() {
     const stocksData = await Promise.all(stockDataPromises);
     
     tickerContainer.innerHTML = stocksData.map(stock => {
-      if (stock.error) {
-        return `
-          <div class="stock-card error" data-symbol="${stock.symbol}">
-            <div class="stock-card-header">
-              <div class="stock-card-symbol">${stock.symbol}</div>
-            </div>
-            <div class="stock-card-price">Error loading</div>
-            <div class="stock-card-name">${stock.name}</div>
-          </div>
-        `;
-      }
-      
-      const isPositive = stock.change >= 0;
+      const pct = formatDailyPctHtml(stock);
+      const priceLine = stock.error || !stock.price ? '—' : `$${stock.price.toFixed(2)}`;
       return `
-        <div class="stock-card" data-symbol="${stock.symbol}">
+        <div class="stock-card ${stock.error ? 'soft-error' : ''}" data-symbol="${stock.symbol}">
           <div class="stock-card-header">
             <div class="stock-card-symbol">${stock.symbol}</div>
-            <div class="stock-card-change ${isPositive ? 'positive' : 'negative'}">
-              ${isPositive ? '+' : ''}${stock.changePercent.toFixed(2)}%
+            <div class="stock-card-change ${pct.cls}">
+              ${pct.html}
             </div>
           </div>
-          <div class="stock-card-price">$${stock.price.toFixed(2)}</div>
+          <div class="stock-card-price">${priceLine}</div>
           <div class="stock-card-name">${stock.name}</div>
         </div>
       `;
@@ -777,47 +1184,58 @@ async function updateStockTicker() {
   const tickerContainer = document.getElementById('stocksTicker');
   const searchInput = document.getElementById('stockSearchInput');
   const searchBtn = document.getElementById('searchStockBtn');
-  const categoryTabs = document.querySelectorAll('.category-tab');
-  
-  // Stock selector (now an input field)
-  if (stockSelect) {
-    stockSelect.addEventListener('change', (e) => {
-      const symbol = e.target.value.trim().toUpperCase();
-      if (symbol) {
-        updateStockDetails(symbol);
-      }
-    });
-    stockSelect.addEventListener('blur', (e) => {
-      const symbol = e.target.value.trim().toUpperCase();
-      if (symbol) {
-        updateStockDetails(symbol);
-      }
-    });
-  }
-  
-  // Timeframe buttons
+  const filterTabs = document.querySelectorAll('#stockFilterTabs .category-tab');
+
+  // Timeframe buttons — refetch chart range via corsproxy
   if (timeframeButtons.length > 0) {
     timeframeButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         timeframeButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentTimeframe = btn.dataset.timeframe;
-        updateStockDetails(currentSymbol);
+        if (currentSymbol) {
+          updateStockDetails(currentSymbol);
+        }
       });
     });
   }
-  
-  // Category tabs
-  if (categoryTabs.length > 0) {
-    categoryTabs.forEach(tab => {
+
+  // Category filter tabs
+  if (filterTabs.length > 0) {
+    filterTabs.forEach(tab => {
       tab.addEventListener('click', () => {
-        categoryTabs.forEach(t => t.classList.remove('active'));
+        filterTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        loadCategoryStocks(tab.dataset.category);
+        closeAnalysisPanel();
+        loadCategoryStocks(tab.dataset.filter);
       });
     });
   }
-  
+
+  const addWl = document.getElementById('addToWatchlistBtn');
+  if (addWl) {
+    addWl.addEventListener('click', () => {
+      const sym = currentSymbol;
+      if (!sym) return;
+      let wl = [];
+      try {
+        wl = JSON.parse(localStorage.getItem('intellivest_watchlist') || '[]');
+      } catch (e) {
+        wl = [];
+      }
+      if (!Array.isArray(wl)) wl = [];
+      if (!wl.includes(sym)) {
+        wl.push(sym);
+        localStorage.setItem('intellivest_watchlist', JSON.stringify(wl));
+      }
+      const prev = addWl.textContent;
+      addWl.textContent = 'Added ✓';
+      setTimeout(() => {
+        addWl.textContent = prev;
+      }, 1600);
+    });
+  }
+
   // Search functionality
   if (searchBtn) {
     searchBtn.addEventListener('click', () => {
@@ -839,28 +1257,37 @@ async function updateStockTicker() {
     });
   }
   
-  // Initialize with default stock
   if (stockSelect) {
     const urlParams = new URLSearchParams(window.location.search);
     const symbolParam = urlParams.get('symbol');
     if (symbolParam) {
-      currentSymbol = symbolParam.toUpperCase();
-      stockSelect.value = currentSymbol;
+      const sym = symbolParam.toUpperCase();
+      stockSelect.value = sym;
+      openAnalysisPanel();
+      currentSymbol = sym;
+      highlightSelectedStockCard(sym);
+      updateStockDetails(sym);
     } else {
-      stockSelect.value = currentSymbol;
+      stockSelect.value = '';
     }
-    updateStockDetails(currentSymbol);
   }
-  
-  // Load initial category
-  loadCategoryStocks('financials');
+
+  loadCategoryStocks('all');
+  startRefresh();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopRefresh();
+    else {
+      startRefresh();
+      refreshVisibleCards();
+    }
+  });
   
   // Update ticker if container exists
   if (tickerContainer) {
     updateStockTicker();
     setInterval(() => {
-      updateStockTicker();
-    }, 30000);
+      if (!document.hidden) updateStockTicker();
+    }, REFRESH_INTERVAL_MS);
     
     tickerContainer.addEventListener('click', (e) => {
       const stockCard = e.target.closest('.stock-card');
@@ -875,6 +1302,7 @@ async function updateStockTicker() {
 // Export for use in other pages
 window.StockTicker = {
   update: updateStockTicker,
-  fetchData: fetchStockData
+  fetchData: fetchStockData,
+  fetchDaily: fetchDailyChartQuote
 };
 

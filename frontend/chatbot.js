@@ -1,191 +1,622 @@
-// Intellivest AI Chatbot - Financial Literacy Assistant for College Students
-(function initChatbot() {
-  const messagesContainer = document.getElementById('chatbotMessages');
-  const chatbotForm = document.getElementById('chatbotForm');
-  const chatbotInput = document.getElementById('chatbotInput');
+// Intellivest AI Chatbot — starts after chatbot-survey.js signals readiness
+(function () {
+  function runChatbot() {
+    const messagesContainer = document.getElementById('chatbotMessages');
+    const chatbotForm = document.getElementById('chatbotForm');
+    const chatbotInput = document.getElementById('chatbotInput');
 
-  // Enhanced financial knowledge base for college students
-  const financialKnowledge = {
-    greeting: {
-      keywords: ['hello', 'hi', 'hey', 'greetings', 'what\'s up', 'sup'],
-      responses: [
-        "Hi! I'm Intellivest — here to help you make smart money moves. What can I help you with today?",
-        "Hello! I'm Intellivest, your AI financial literacy assistant. I'm here to help with budgeting, saving, investing basics, and more. What would you like to know?",
-        "Hey there! I'm Intellivest, ready to help you navigate your finances as a college student. What questions do you have?"
-      ]
-    },
-    budgeting: {
-      keywords: ['budget', 'budgeting', 'save money', 'saving', 'expenses', 'income', 'spending', 'money management'],
-      responses: [
-        "Great question! Here's a simple college budgeting method:\n\n1. List your monthly income (job, financial aid, family support)\n2. Track expenses like food, rent, books, etc.\n3. Use the 50/30/20 rule:\n   • 50% needs (rent, food, utilities)\n   • 30% wants (entertainment, dining out)\n   • 20% savings/debt repayment\n\nWant a template or app recommendations?",
-        "Budgeting in college is all about tracking what comes in and what goes out. Start by writing down all your income sources (part-time job, financial aid refund, family help) and all your expenses. Apps like Mint or YNAB can help automate this. The key is being honest about your spending!",
-        "A simple way to start: track every dollar you spend for one month. Use a spreadsheet or app. Then categorize: needs vs. wants. Try the envelope method — allocate cash for different categories. This helps you see where your money actually goes."
-      ]
-    },
-    credit: {
-      keywords: ['credit', 'credit score', 'credit card', 'debt', 'credit report', 'credit history'],
-      responses: [
-        "Building credit in college is smart! Here's how:\n\n• Get a student credit card (low limit, pay in full each month)\n• Pay all bills on time — this is 35% of your score\n• Keep credit utilization below 30%\n• Don't open too many accounts at once\n\nYour credit score affects loans, apartments, and even job applications. Start building it now!",
-        "Credit cards can be helpful if used responsibly. Always pay your balance in full each month to avoid interest. Set up autopay for the minimum at least. Check your credit report free at annualcreditreport.com once a year. Remember: credit is a tool, not free money!",
-        "Credit scores range from 300-850. Factors: payment history (35%), amounts owed (30%), length of history (15%), new credit (10%), credit mix (10%). As a student, focus on paying on time and keeping balances low. It takes time to build good credit — start now!"
-      ]
-    },
-    saving: {
-      keywords: ['save', 'saving', 'emergency fund', 'savings account', 'how to save'],
-      responses: [
-        "Saving in college can feel tough, but every bit counts!\n\n• Start an emergency fund — aim for $500-1000 first\n• Use the 'pay yourself first' rule — save before spending\n• Automate transfers to savings\n• Save windfalls (tax refunds, birthday money)\n• Use a high-yield savings account (better interest rates)\n\nEven $20/month adds up over time!",
-        "Emergency funds are crucial — they prevent you from going into debt when unexpected expenses hit. Start small: $500 is a good first goal. Keep it in a separate savings account so you're not tempted to spend it. Once you have that, work toward 3-6 months of expenses.",
-        "Saving strategies for students:\n• Round up purchases and save the difference\n• Use the 52-week challenge (save $1 week 1, $2 week 2, etc.)\n• Save 50% of any extra income\n• Cook at home more often\n• Use student discounts everywhere\n\nSmall changes make a big difference!"
-      ]
-    },
-    investing: {
-      keywords: ['invest', 'investing', 'stocks', 'portfolio', 'robo-advisor', 'index fund', 'retirement'],
-      responses: [
-        "Investing as a student? Smart move! Here's the basics:\n\n• Start with a Roth IRA (you pay taxes now, withdraw tax-free later)\n• Use low-cost index funds or ETFs for diversification\n• Consider robo-advisors like Betterment or Wealthfront\n• Invest consistently (dollar-cost averaging)\n• Think long-term — time is your biggest advantage\n\nRemember: only invest money you won't need for 5+ years!",
-        "Investing basics: stocks are ownership in companies, bonds are loans to companies/governments. Diversification (spreading investments) reduces risk. Index funds track the whole market — great for beginners. Start with $25-50/month if that's all you can afford. The key is starting early!",
-        "For college students, investing can seem overwhelming. Start simple:\n• Open a Roth IRA (if you have earned income)\n• Invest in a target-date fund or S&P 500 index fund\n• Set up automatic contributions\n• Don't try to time the market\n• Focus on learning, not quick gains\n\nTime in the market beats timing the market!"
-      ]
-    },
-    loans: {
-      keywords: ['loan', 'student loan', 'fafsa', 'financial aid', 'debt', 'repayment'],
-      responses: [
-        "Student loans are a big decision. Here's what to know:\n\n• Federal loans usually have better terms than private\n• Fill out FAFSA every year for aid eligibility\n• Only borrow what you need\n• Understand interest rates and repayment terms\n• Consider income-driven repayment plans after graduation\n\nAfter graduation, prioritize high-interest debt first. Always make minimum payments on all loans!",
-        "Managing student loans:\n• Know your loan servicer and keep contact info updated\n• Understand the difference between subsidized (gov pays interest while in school) and unsubsidized loans\n• Consider part-time work or work-study to reduce borrowing\n• Look into loan forgiveness programs for certain careers\n• Start making interest payments while in school if possible",
-        "Student loan tips:\n• Track all your loans in one place (StudentAid.gov)\n• Consider paying interest while in school\n• Look for scholarships and grants first (free money!)\n• Understand your grace period (usually 6 months after graduation)\n• Create a repayment plan before you graduate\n\nRemember: loans are an investment in your future, but borrow wisely!"
-      ]
-    },
-    scholarships: {
-      keywords: ['scholarship', 'grant', 'financial aid', 'free money', 'tuition'],
-      responses: [
-        "Scholarships are free money — definitely worth the effort!\n\n• Apply to many (quality over quantity, but volume helps)\n• Check your school's financial aid office first\n• Use scholarship search engines (Fastweb, Scholarships.com)\n• Look for local scholarships (less competition)\n• Apply even if you don't think you'll win\n• Write strong essays — tell your unique story\n\nEvery dollar in scholarships is a dollar you don't have to borrow!",
-        "Finding scholarships:\n• Check with your major's department\n• Look for community organizations and local businesses\n• Apply for merit-based (grades) and need-based\n• Don't ignore small scholarships — they add up!\n• Keep track of deadlines in a spreadsheet\n• Reuse and adapt essays for similar applications",
-        "Scholarship strategy: Start early, apply often. Many students don't apply because they think they won't win — but someone has to! Set aside time each week to search and apply. Even $500 scholarships are worth it. Remember: you can't win if you don't apply!"
-      ]
-    },
-    taxes: {
-      keywords: ['tax', 'taxes', 'tax return', 'w-2', 'filing', 'irs', 'refund'],
-      responses: [
-        "Taxes as a student can be simpler than you think!\n\n• If you work, you'll likely get a W-2 form\n• You may be claimed as a dependent (affects your filing)\n• Use free tax software (TurboTax Free, FreeTaxUSA)\n• File even if you made little money (you might get a refund!)\n• Keep receipts for education expenses (tuition, books)\n• Consider the American Opportunity Tax Credit if eligible\n\nMost students can file for free — don't pay unless you have to!",
-        "Student tax basics:\n• File by April 15th (or request extension)\n• If you're a dependent, your parents may claim you\n• Part-time job income is usually taxed, but you may get it back\n• Scholarships used for tuition/books are usually tax-free\n• Keep all tax documents organized\n• Consider using tax software — it walks you through everything",
-        "Tax tips for students:\n• File even if income is low (you might get refunds)\n• Don't forget about state taxes if applicable\n• Education credits can save money\n• Keep track of education expenses\n• Use free filing options (IRS Free File if income under $79k)\n• Don't wait until the last minute!"
-      ]
-    },
-    general: {
-      keywords: [],
-      responses: [
-        "I'm here to help with financial questions! Whether it's budgeting, saving, investing basics, credit, loans, scholarships, or taxes — ask away. What would you like to know more about?",
-        "Financial literacy is a journey! I can help with budgeting, saving strategies, credit building, investing basics, student loans, scholarships, taxes, and more. What's on your mind?",
-        "Feel free to ask me anything about personal finance! I can help with money management, saving, investing basics, credit, loans, and other financial topics relevant to college students. What can I help with?"
-      ]
+    function surveyDone() {
+      return localStorage.getItem('intellivest_survey_complete') === 'true';
     }
-  };
 
-  // Generate AI response based on user input
-  function generateResponse(userMessage) {
-    const lowerMessage = userMessage.toLowerCase().trim();
-    
-    // Handle greetings first
-    if (financialKnowledge.greeting.keywords.some(keyword => lowerMessage.includes(keyword))) {
-      const responses = financialKnowledge.greeting.responses;
-      return responses[Math.floor(Math.random() * responses.length)];
+    function surveySkipped() {
+      return localStorage.getItem('intellivest_survey_complete') === 'skipped';
     }
-    
-    // Find the best matching category
-    let matchedCategory = null;
-    let maxMatches = 0;
 
-    for (const [category, data] of Object.entries(financialKnowledge)) {
-      if (category === 'general' || category === 'greeting') continue;
-      
-      const matches = data.keywords.filter(keyword => lowerMessage.includes(keyword)).length;
-      if (matches > maxMatches) {
-        maxMatches = matches;
-        matchedCategory = category;
+    function getSurveyProfile() {
+      if (!surveyDone()) return null;
+      let goals = [];
+      try {
+        goals = JSON.parse(localStorage.getItem('intellivest_user_goals') || '[]');
+      } catch (e) {
+        goals = [];
       }
+      return {
+        name: localStorage.getItem('intellivest_user_name') || '',
+        age: localStorage.getItem('intellivest_user_age') || '',
+        savings: localStorage.getItem('intellivest_user_savings') || '',
+        risk: localStorage.getItem('intellivest_user_risk') || '',
+        goals
+      };
     }
 
-    // Get response from matched category or use general
-    const category = matchedCategory || 'general';
-    const responses = financialKnowledge[category].responses;
-    const response = responses[Math.floor(Math.random() * responses.length)];
-
-    // Add helpful follow-up for specific topics
-    if (category !== 'general' && category !== 'greeting') {
-      return response + "\n\nIs there anything specific about this topic you'd like me to explain further?";
+    function normalizeGoals(goals) {
+      return (goals || []).map(g => String(g || '').toLowerCase());
     }
 
-    return response;
-  }
+    function getPersonalizedPlan(profile) {
+      if (!profile) return { summary: ['Complete your profile survey to unlock a personalized plan.'] };
+      const goals = normalizeGoals(profile.goals);
+      const risk = (profile.risk || '').toLowerCase();
+      const savings = profile.savings || '';
+      const sections = [];
 
-  // Add message to chat
-  function addMessage(text, isUser = false) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-    
-    // Format text with line breaks and lists
-    const formattedText = formatMessage(text);
-    
-    if (isUser) {
-      messageDiv.innerHTML = `
+      function addSection(title, lines) {
+        sections.push({ title, lines });
+      }
+
+      if (goals.some(g => g.includes('house'))) {
+        const timelineLine =
+          savings === 'Under $500' || savings === '$500–$2,000'
+            ? 'You need to build savings first. Save at least $600/month to reach a starter down payment in about 4-6 years.'
+            : savings === '$2,000–$10,000'
+              ? 'You have a good start. At this pace, you could target an entry-level home range in 3-5 years with disciplined monthly savings.'
+              : 'You may be ready to start the pre-approval process while continuing to build your down payment and emergency fund.';
+        addSection('Buying a House Plan', [
+          '1) Save a 20% down payment target to avoid PMI when possible.',
+          '2) Build a 3-6 month emergency fund before home shopping.',
+          '3) Keep debt-to-income below 43% and protect your cash flow.',
+          '4) Build your credit score above 720 for better mortgage rates.',
+          '5) Get pre-approved before house hunting.',
+          '6) Budget 2-5% of loan amount for closing costs.',
+          'Suggested places for down payment savings: HYSA (Marcus/Ally/SoFi), Series I Bonds, and short-term CD laddering.',
+          'Conservative ETF ideas for 3+ year timelines: BND, SCHD, and modest VTI exposure.',
+          timelineLine
+        ]);
+      }
+
+      if (goals.some(g => g.includes('investing in stocks') || g.includes('stocks'))) {
+        if (risk.includes('aggressive')) {
+          addSection('Stocks Plan (Aggressive)', [
+            'Use a core-satellite approach: core ETFs + selective individual stocks.',
+            'Core ETFs: VTI, VXUS, and QQQ for higher growth tilt.',
+            'Sector stock watchlist: Tech (AAPL, MSFT, NVDA, GOOGL, META), Healthcare (JNJ, UNH, ABBV), Finance (JPM, BAC, V, MA), Energy (XOM, CVX, NEE), Consumer (AMZN, COST, WMT), Minerals (BHP, FCX, NEM, VALE).',
+            'Dollar-cost average monthly and keep at least 3-6 months cash reserves.',
+            'Reference portfolio ideas: Buffett core holdings, Dalio all-weather mix, and high-risk innovation sleeves (ARK-style) in small allocation only.'
+          ]);
+        } else {
+          addSection('Stocks Plan (Beginner / Balanced)', [
+            'Start with index funds before individual stocks.',
+            'Starter allocation idea: VTI (US), VXUS (international), BND (stability).',
+            'Rule: do not invest money needed within 5 years.',
+            'Automate a fixed monthly contribution (dollar-cost averaging).',
+            'Review allocation quarterly and rebalance back to target weights.'
+          ]);
+        }
+      }
+
+      if (goals.some(g => g.includes('save money'))) {
+        addSection('Saving Money Plan', [
+          '1) Track all spending for 30 days (Mint/YNAB/spreadsheet).',
+          '2) Use 50/30/20 budgeting: needs/wants/savings+debt.',
+          '3) Automate savings on payday (pay yourself first).',
+          '4) Cancel unused subscriptions and renegotiate recurring bills.',
+          '5) Build $1,000 starter emergency fund, then 3-6 months expenses.',
+          'Recommended accounts: HYSA (Marcus/Ally/SoFi), money market funds, and 6-24 month CDs.'
+        ]);
+      }
+
+      if (goals.some(g => g.includes('credit'))) {
+        addSection('Credit Score Plan', [
+          'Score drivers: 35% payment history, 30% utilization, 15% history length, 10% new credit, 10% credit mix.',
+          'Always pay on time and keep utilization under 30% (ideally under 10%).',
+          'If score is building: start with secured card and monitor annualcreditreport.com.',
+          'If score is improving: request limit increases after 6+ months and dispute report errors quickly.',
+          'If score is strong: maintain low balances and apply selectively for rewards products.'
+        ]);
+      }
+
+      if (goals.some(g => g.includes('mutual funds') || g.includes('etf'))) {
+        const etfMix = risk.includes('aggressive')
+          ? 'Aggressive sample mix: 60% VTI, 25% QQQ, 15% VXUS.'
+          : risk.includes('moderate')
+            ? 'Moderate sample mix: 50% VTI, 30% VXUS, 20% BND.'
+            : 'Conservative sample mix: 60% BND, 30% VTI, 10% GLD.';
+        addSection('Mutual Funds and ETFs Plan', [
+          'ETF = intraday trading + lower fees; Mutual Fund = pooled fund, often minimum investment; Index Fund = tracks benchmark with low cost.',
+          etfMix,
+          'Beginner mutual funds to compare: FXAIX, VFIAX, SWTSX (low expense ratios).'
+        ]);
+      }
+
+      if (goals.some(g => g.includes('retirement'))) {
+        addSection('Retirement Plan', [
+          'Priority order: 401(k) match first, then Roth IRA, then Traditional IRA/HSA as relevant.',
+          'Roth IRA is often strong for young earners due to tax-free growth potential.',
+          'Milestones: by 30 save ~1x salary, by 40 ~3x, by 50 ~6x, by 60 ~8x.',
+          'Compound-interest reminder: starting 10 years earlier can roughly double outcomes at retirement.'
+        ]);
+      }
+
+      if (sections.length === 0) {
+        addSection('Starter Plan', [
+          'Build a 3-month emergency fund, pay high-interest debt, and automate monthly investing in broad low-cost funds.'
+        ]);
+      }
+
+      return { sections };
+    }
+
+    function formatPlanForMessage(plan) {
+      const parts = [];
+      (plan.sections || []).forEach(section => {
+        parts.push(section.title + ':');
+        (section.lines || []).forEach(line => parts.push('• ' + line));
+        parts.push('');
+      });
+      return parts.join('\n').trim();
+    }
+
+    function buildWelcomeAfterSurvey() {
+      const p = getSurveyProfile();
+      const first = (p && p.name) ? p.name.split(/\s+/)[0] : 'there';
+      const goals = (p && p.goals) || [];
+      const goalsText = goals.length ? goals.join(', ') : 'General financial planning';
+      const planText = formatPlanForMessage(getPersonalizedPlan(p));
+      return (
+        'Welcome back, ' +
+        first +
+        '! 👋\n\n' +
+        'Based on your profile:\n' +
+        '📊 Risk Level: ' + (p?.risk || 'Not set') + '\n' +
+        '💰 Available to invest: ' + (p?.savings || 'Not set') + '\n' +
+        '🎯 Your goals: ' + goalsText + '\n\n' +
+        "Here's your personalized plan:\n" +
+        planText +
+        '\n\n' +
+        'What would you like help with today?'
+      );
+    }
+
+    function defaultWelcome() {
+      return (
+        "Hello! I'm Intellivest AI, your financial literacy assistant. I can help with budgeting, saving, investing basics, credit, loans, and more. What would you like to know?"
+      );
+    }
+
+    function getResponse(message) {
+      const msg = message.toLowerCase();
+
+      const name = localStorage.getItem('intellivest_user_name') || 'there';
+      const risk = localStorage.getItem('intellivest_user_risk') || 'Moderate';
+      const savings = localStorage.getItem('intellivest_user_savings') || 'Unknown';
+
+      const houseResponse = () => {
+        let savingsAdvice = '';
+        if (savings.includes('Under $500')) {
+          savingsAdvice = `Since you have under $500 saved right now,
+start by saving $300-500/month in a High-Yield Savings Account.
+You could have a $10,000 foundation in under 2 years.`;
+        } else if (savings.includes('500') || savings.includes('2,000')) {
+          savingsAdvice = `You have a good start! Open an Ally or Marcus
+HYSA earning 4-5% APY and keep adding to it consistently.`;
+        } else if (savings.includes('10,000') || savings.includes('50,000')) {
+          savingsAdvice = `You may be ready to start the mortgage
+pre-approval process. Talk to a mortgage broker soon.`;
+        }
+
+        return `Here is your home buying plan, ${name}! 🏠
+
+STEP-BY-STEP PLAN:
+1. Get your credit score to 720+ for the best mortgage rates
+2. Save a 20% down payment to avoid PMI insurance fees
+3. Keep your debt-to-income ratio below 43%
+4. Build a 3-6 month emergency fund BEFORE buying
+5. Get pre-approved before you start house hunting
+6. Budget an extra 2-5% of home price for closing costs
+
+YOUR SAVINGS SITUATION:
+${savingsAdvice}
+
+BEST ACCOUNTS TO SAVE FOR A HOUSE:
+• Ally Bank HYSA — 4.5% APY, no minimums
+• Marcus by Goldman Sachs — 4.4% APY
+• SoFi — 4.6% APY
+• Series I Bonds — good for inflation protection
+
+AVOID putting your down payment money in stocks.
+The market could drop right when you need the cash.`;
+      };
+
+      const stockResponse = () => {
+        if (risk === 'Aggressive' || risk === 'Very Aggressive') {
+          return `Based on your aggressive risk profile, here are
+my top stock picks for you ${name}! 📈
+
+TOP GROWTH STOCKS RIGHT NOW:
+• NVDA — Nvidia, the leader in AI chips, highest growth
+• MSFT — Microsoft, dominant in AI and cloud computing
+• AMZN — Amazon, e-commerce plus AWS cloud revenue
+• GOOGL — Google, AI search and YouTube dominance
+• META — Facebook/Instagram, ad revenue recovering strong
+
+HOW TO BUILD YOUR PORTFOLIO:
+• 40% → Pick 2-3 of the stocks above
+• 40% → QQQ ETF (top 100 tech, safer than individual stocks)
+• 20% → VOO (S&P 500, your stable foundation)
+
+HOW TO ACTUALLY BUY:
+1. Download Robinhood, Fidelity, or Webull (all free)
+2. Search the ticker like NVDA or QQQ
+3. You can buy fractional shares — even $10 worth
+4. Invest the same amount every month
+   (this is called Dollar Cost Averaging)
+
+⚠️ Never invest money you need within 1-2 years.`;
+        }
+        if (risk === 'Moderate') {
+          return `Based on your moderate risk profile, ${name},
+here are balanced picks for you! 📊
+
+SOLID MODERATE PICKS:
+• VOO — S&P 500 index, tracks top 500 US companies
+• VTI — Total US market, even more diversified
+• AAPL — Apple, steady growth with strong cash flow
+• MSFT — Microsoft, consistent and reliable
+• SCHD — Dividend ETF, pays you cash quarterly
+
+SUGGESTED SPLIT:
+• 50% → VOO or VTI (your foundation)
+• 30% → 1-2 individual stocks (AAPL or MSFT)
+• 20% → SCHD for dividend income
+
+Open a free account on Fidelity or Robinhood
+and you can start with as little as $1.`;
+        }
+        return `Based on your conservative profile, ${name},
+here are safe and steady picks! 🛡️
+
+CONSERVATIVE PICKS:
+• VOO — S&P 500 index fund (most reliable long term)
+• VTI — Total US stock market
+• BND — Bond fund, very low risk
+• SCHD — Dividend stocks, lower volatility
+
+SUGGESTED SPLIT:
+• 50% → VOO (stable market growth)
+• 30% → BND (bonds for safety)
+• 20% → SCHD (dividend income)
+
+These give you market growth without wild swings.
+Fidelity is the best platform for conservative investors.`;
+      };
+
+      const etfResponse = () => `Great question ${name}! Here are the best ETFs
+based on your ${risk} risk level 📊
+
+WHAT IS AN ETF:
+An ETF is a basket of many stocks in one purchase.
+Instead of buying one company, you buy a tiny piece
+of hundreds of companies at once. Much safer than
+picking individual stocks.
+
+YOUR BEST ETFs (${risk} Risk):
+${risk === 'Aggressive' || risk === 'Very Aggressive' ?
+`• QQQ — Top 100 tech companies (Apple, Nvidia, Microsoft)
+• VGT — Vanguard tech sector, pure technology focus
+• ARKK — Cathie Wood's innovation fund (high risk/reward)
+• VOO — S&P 500, keep this as your stable base (30%)` :
+risk === 'Moderate' ?
+`• VOO — S&P 500, most recommended for beginners
+• VTI — Total US market, even more diversified than VOO
+• VXUS — International stocks for global exposure
+• SCHD — Dividend focused, pays you quarterly` :
+`• VOO — S&P 500 index, safest equity option
+• BND — Total bond market, very low risk
+• SCHD — Dividend ETF, steady income
+• VTI — Broad US market exposure`}
+
+HOW TO BUY AN ETF:
+1. Open Fidelity, Schwab, or Robinhood (all free)
+2. Search the ticker symbol (VOO, QQQ, etc.)
+3. Buy fractional shares — you don't need $400
+   for one share, you can buy $50 worth
+4. Set up automatic monthly investing
+
+LOWEST FEE ETFs (fees eat your returns):
+• VOO — 0.03% per year (cheapest)
+• VTI — 0.03% per year
+• QQQ — 0.20% per year
+• SCHD — 0.06% per year`;
+
+      const budgetResponse = () => `Here is a simple budget plan for you ${name}! 💰
+
+THE 50/30/20 RULE:
+• 50% → Needs: rent, food, utilities, transportation
+• 30% → Wants: dining out, subscriptions, entertainment
+• 20% → Savings + investing + paying off debt
+
+QUICK WINS THIS WEEK:
+1. List every subscription you pay right now
+   Cancel any you forgot about or don't use
+2. Set up automatic savings transfer on payday
+   Pay yourself first before spending anything
+3. Use cash for groceries — people spend less with cash
+4. Meal prep 2-3 days a week to cut food costs by 30%
+
+FREE BUDGETING APPS:
+• Mint — automatically categorizes your spending
+• YNAB — best for people serious about budgeting
+• EveryDollar — simple and easy to start with
+• Google Sheets — free and fully customizable
+
+YOUR FIRST GOAL:
+Build a $1,000 starter emergency fund first.
+Even saving $50 per week gets you there in 5 months.`;
+
+      const creditResponse = () => `Here is your credit score game plan ${name}! 💳
+
+HOW YOUR SCORE IS CALCULATED:
+• 35% — Payment history (never miss a payment)
+• 30% — Credit utilization (keep under 30%)
+• 15% — Length of history (keep old cards open)
+• 10% — Credit mix (card + loan = better score)
+• 10% — New credit (do not apply for many at once)
+
+ACTION PLAN BY SCORE RANGE:
+
+Under 580 (Poor):
+→ Get Discover it Secured or Capital One Secured card
+→ Use it for one small purchase per month
+→ Pay the FULL balance every month, set autopay
+→ Check your free report at annualcreditreport.com
+
+580-669 (Fair):
+→ Apply for Capital One Quicksilver
+→ Keep balance under 30% of your limit always
+→ Request a credit limit increase after 6 months
+
+670-739 (Good):
+→ Apply for Chase Freedom Unlimited or Discover it
+→ You qualify for most car loans and apartments
+
+740+ (Excellent):
+→ Chase Sapphire Preferred or Amex Gold
+→ You get the best rates on mortgages and car loans
+
+CHECK YOUR SCORE FREE:
+• Credit Karma — free, updates weekly, no card needed
+• annualcreditreport.com — official government site`;
+
+      const savingResponse = () => `Here is how to start saving effectively ${name}! 🏦
+
+YOUR SAVINGS GOAL LADDER:
+Step 1 → $1,000 starter emergency fund
+Step 2 → 1 full month of expenses covered
+Step 3 → 3-6 months of expenses (full emergency fund)
+Step 4 → Start investing everything above that
+
+BEST HIGH-YIELD SAVINGS ACCOUNTS RIGHT NOW:
+• SoFi — 4.6% APY, no fees, free checking included
+• Ally Bank — 4.5% APY, excellent mobile app
+• Marcus by Goldman Sachs — 4.4% APY, very reliable
+
+Regular bank savings pays 0.01% APY.
+These pay 400 times more interest.
+
+THE TRICK THAT ACTUALLY WORKS:
+Set up an automatic transfer of even $25-50
+on the same day you get paid every month.
+You will not miss what you never see in your account.
+
+${savings.includes('Under $500') ?
+`Since you are starting with under $500:
+Your goal this month is to open a SoFi or Ally HYSA
+and set up even a $25 weekly automatic transfer.
+Small and consistent beats large and irregular.` : ''}`;
+
+      const mutualResponse = () => `Great topic ${name}! Here is the mutual fund breakdown 📊
+
+ETF vs MUTUAL FUND — THE DIFFERENCE:
+• ETF: Trades like a stock all day, lower fees,
+  can buy fractional shares — best for beginners
+• Mutual Fund: Only trades once per day at market close,
+  often needs $1,000 minimum to start
+• Index Fund: Can be either one, just tracks an index
+  like the S&P 500 — the lowest fees of all
+
+TOP MUTUAL FUNDS (lowest fees):
+• FXAIX — Fidelity S&P 500 — 0.015% fee (cheapest!)
+• VFIAX — Vanguard S&P 500 — 0.04% fee
+• SWTSX — Schwab Total Stock Market — 0.03% fee
+
+WHY FEES MATTER SO MUCH:
+On $10,000 invested over 30 years:
+1.0% fee → you lose about $70,000 in gains
+0.03% fee → you keep almost all of your gains
+
+Always pick the lowest fee option available.
+FXAIX at Fidelity is the gold standard for beginners.`;
+
+      const retirementResponse = () => `Here is your retirement roadmap ${name}! 🏖️
+
+OPEN THESE ACCOUNTS IN THIS ORDER:
+1. 401k up to your employer match — this is FREE money
+   If they match 3%, contribute at least 3%. Always.
+2. Roth IRA — max it out at $7,000 per year if under 50
+   You pay taxes now but NEVER pay taxes on the growth
+3. Back to 401k — contribute more after maxing Roth IRA
+4. HSA — only if you have a high-deductible health plan
+   Triple tax advantage — the best account that exists
+
+THE POWER OF STARTING EARLY:
+$200 per month starting at age 22 → about $1,000,000 at 65
+$200 per month starting at age 32 → about $500,000 at 65
+$200 per month starting at age 42 → about $220,000 at 65
+
+Starting 10 years earlier nearly DOUBLES your money.
+
+RETIREMENT SAVINGS TARGETS:
+By age 30 → Have 1x your annual salary saved
+By age 40 → Have 3x your annual salary saved
+By age 50 → Have 6x your annual salary saved
+By age 60 → Have 8x your annual salary saved`;
+
+      const defaultResponse = () => `I want to make sure I give you the best answer ${name}!
+Could you ask me about one of these topics?
+
+💰 Budgeting and saving money
+📈 What stocks or ETFs to buy
+🏠 How to buy a house
+💳 Building your credit score
+🏦 Mutual funds and index funds
+🏖️ Retirement planning and 401k
+📚 Student loans and scholarships
+🧾 Taxes basics
+
+What would you like help with?`;
+
+      const isHouse = msg.includes('house') ||
+        msg.includes('home') ||
+        msg.includes('mortgage') ||
+        msg.includes('property') ||
+        msg.includes('real estate') ||
+        msg.includes('down payment') ||
+        msg.includes('buy a home') ||
+        msg.includes('buying a home');
+
+      const isStock = msg.includes('stock') ||
+        msg.includes('share') ||
+        msg.includes('equity') ||
+        msg.includes('ticker') ||
+        msg.includes('nvda') ||
+        msg.includes('aapl') ||
+        msg.includes('invest in') ||
+        msg.includes('what should i buy') ||
+        msg.includes('what to buy') ||
+        msg.includes('what do i buy') ||
+        msg.includes('recommend') ||
+        msg.includes('should i buy') ||
+        msg.includes('stocks to buy') ||
+        msg.includes('stock to buy') ||
+        msg.includes('stocks should i buy') ||
+        msg.includes('what stocks') ||
+        msg.includes('which stocks') ||
+        msg.includes('good stocks') ||
+        msg.includes('best stocks') ||
+        msg.includes('top stocks') ||
+        msg.includes('stocks for beginners') ||
+        msg.includes('where to invest') ||
+        msg.includes('what to invest in') ||
+        msg.includes('how to invest') ||
+        msg.includes('start investing') ||
+        msg.includes('begin investing') ||
+        msg.includes('stocks recommendation') ||
+        (msg.includes('buy') && !msg.includes('house') &&
+         !msg.includes('home') && !msg.includes('car'));
+
+      const isETF = msg.includes('etf') ||
+        msg.includes('index fund') ||
+        msg.includes('voo') ||
+        msg.includes('vti') ||
+        msg.includes('qqq') ||
+        msg.includes('fund');
+
+      const isBudget = msg.includes('budget') ||
+        msg.includes('spending') ||
+        msg.includes('expenses') ||
+        msg.includes('manage money') ||
+        msg.includes('track') ||
+        msg.includes('where does my money') ||
+        msg.includes('50/30') ||
+        msg.includes('50 30');
+
+      const isCredit = msg.includes('credit') ||
+        msg.includes('fico') ||
+        msg.includes('score') ||
+        msg.includes('credit card') ||
+        msg.includes('debt') ||
+        msg.includes('loan');
+
+      const isSaving = msg.includes('save') ||
+        msg.includes('saving') ||
+        msg.includes('savings') ||
+        msg.includes('emergency') ||
+        msg.includes('hysa') ||
+        msg.includes('interest') ||
+        msg.includes('bank account') ||
+        msg.includes('put money') ||
+        msg.includes('store money');
+
+      const isMutual = msg.includes('mutual') ||
+        msg.includes('fidelity') ||
+        msg.includes('vanguard') ||
+        msg.includes('fxaix') ||
+        msg.includes('managed fund');
+
+      const isRetirement = msg.includes('retire') ||
+        msg.includes('401') ||
+        msg.includes('roth') ||
+        msg.includes('ira') ||
+        msg.includes('pension') ||
+        msg.includes('old age') ||
+        msg.includes('when i am older');
+
+      if (isHouse) { return houseResponse(); }
+      if (isETF) { return etfResponse(); }
+      if (isStock) { return stockResponse(); }
+      if (isBudget) { return budgetResponse(); }
+      if (isCredit) { return creditResponse(); }
+      if (isSaving) { return savingResponse(); }
+      if (isMutual) { return mutualResponse(); }
+      if (isRetirement) { return retirementResponse(); }
+
+      return defaultResponse();
+    }
+
+    function addMessage(text, isUser = false) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+      const formattedText = formatMessage(text);
+      if (isUser) {
+        messageDiv.innerHTML = `
         <div class="message-content">
           <div class="message-text">${escapeHtml(text)}</div>
         </div>
       `;
-    } else {
-      messageDiv.innerHTML = `
+      } else {
+        messageDiv.innerHTML = `
         <div class="message-avatar">IV</div>
         <div class="message-content">
           <div class="message-text">${formattedText}</div>
         </div>
       `;
+      }
+      messagesContainer.appendChild(messageDiv);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
-    
-    messagesContainer.appendChild(messageDiv);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-  }
 
-  // Format message with line breaks and lists
-  function formatMessage(text) {
-    // Split by double newlines for paragraphs
-    let formatted = escapeHtml(text);
-    
-    // Convert numbered lists (1. item) to HTML lists
-    formatted = formatted.replace(/(\d+\.\s+[^\n]+(?:\n(?:\d+\.\s+[^\n]+))*)/g, (match) => {
-      const items = match.split(/\d+\.\s+/).filter(item => item.trim());
-      if (items.length > 1) {
-        return '<ol>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ol>';
-      }
-      return match;
-    });
-    
-    // Convert bullet points (• item) to HTML lists
-    formatted = formatted.replace(/(•\s+[^\n]+(?:\n(?:•\s+[^\n]+))*)/g, (match) => {
-      const items = match.split(/•\s+/).filter(item => item.trim());
-      if (items.length > 1) {
-        return '<ul>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ul>';
-      }
-      return match;
-    });
-    
-    // Convert single newlines to <br> for line breaks
-    formatted = formatted.replace(/\n/g, '<br>');
-    
-    return formatted;
-  }
+    function formatMessage(text) {
+      let formatted = escapeHtml(text);
+      formatted = formatted.replace(/(\d+\.\s+[^\n]+(?:\n(?:\d+\.\s+[^\n]+))*)/g, match => {
+        const items = match.split(/\d+\.\s+/).filter(item => item.trim());
+        if (items.length > 1) {
+          return '<ol>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ol>';
+        }
+        return match;
+      });
+      formatted = formatted.replace(/(•\s+[^\n]+(?:\n(?:•\s+[^\n]+))*)/g, match => {
+        const items = match.split(/•\s+/).filter(item => item.trim());
+        if (items.length > 1) {
+          return '<ul>' + items.map(item => `<li>${item.trim()}</li>`).join('') + '</ul>';
+        }
+        return match;
+      });
+      formatted = formatted.replace(/\n/g, '<br>');
+      return formatted;
+    }
 
-  // Escape HTML to prevent XSS
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
-  // Show typing indicator
-  function showTypingIndicator() {
-    const typingDiv = document.createElement('div');
-    typingDiv.className = 'message bot-message typing-indicator';
-    typingDiv.id = 'typingIndicator';
-    typingDiv.innerHTML = `
+    function showTypingIndicator() {
+      const typingDiv = document.createElement('div');
+      typingDiv.className = 'message bot-message typing-indicator';
+      typingDiv.id = 'typingIndicator';
+      typingDiv.innerHTML = `
       <div class="message-avatar">IV</div>
       <div class="message-content">
         <div class="typing-dots">
@@ -195,43 +626,50 @@
         </div>
       </div>
     `;
-    messagesContainer.appendChild(typingDiv);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-  }
-
-  // Remove typing indicator
-  function removeTypingIndicator() {
-    const indicator = document.getElementById('typingIndicator');
-    if (indicator) {
-      indicator.remove();
+      messagesContainer.appendChild(typingDiv);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
+
+    function removeTypingIndicator() {
+      const indicator = document.getElementById('typingIndicator');
+      if (indicator) indicator.remove();
+    }
+
+    function refreshWelcome() {
+      if (!messagesContainer) return;
+      messagesContainer.innerHTML = '';
+      if (surveyDone()) {
+        addMessage(buildWelcomeAfterSurvey(), false);
+      } else {
+        addMessage(defaultWelcome(), false);
+      }
+    }
+
+    if (!window.__chatbotUiStarted) {
+      window.__chatbotUiStarted = true;
+
+      if (chatbotForm) {
+        chatbotForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const userMessage = chatbotInput.value.trim();
+          if (!userMessage) return;
+          addMessage(userMessage, true);
+          chatbotInput.value = '';
+          showTypingIndicator();
+          await new Promise(resolve =>
+            setTimeout(resolve, Math.min(500, Math.floor(200 + Math.random() * 301)))
+          );
+          removeTypingIndicator();
+          addMessage(getResponse(userMessage), false);
+        });
+      }
+    }
+
+    refreshWelcome();
+    window.__chatbotRefreshWelcome = refreshWelcome;
+
+    if (chatbotInput) chatbotInput.focus();
   }
 
-  // Handle form submission
-  chatbotForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const userMessage = chatbotInput.value.trim();
-    if (!userMessage) return;
-
-    // Add user message
-    addMessage(userMessage, true);
-    chatbotInput.value = '';
-
-    // Show typing indicator
-    showTypingIndicator();
-
-    // Simulate AI thinking time (more realistic)
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 700));
-
-    // Remove typing indicator
-    removeTypingIndicator();
-
-    // Generate and add bot response
-    const botResponse = generateResponse(userMessage);
-    addMessage(botResponse, false);
-  });
-
-  // Focus input on load
-  chatbotInput.focus();
+  document.addEventListener('chatbot-survey-ready', runChatbot);
 })();

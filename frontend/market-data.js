@@ -1,4 +1,340 @@
 // Market Data Dashboard - Real-time data from Yahoo Finance
+
+/**
+ * CORS-safe daily quote for stock cards (stocks.js). Uses corsproxy.io + Yahoo chart 1d.
+ * @returns {{ na: true } | { na: false, name: string, price: number, change: number, changePercent: number, volume: number }}
+ */
+function buildYahooChartUrl(ticker) {
+  return (
+    'https://query1.finance.yahoo.com/v8/finance/chart/' +
+    encodeURIComponent(ticker) +
+    '?interval=1d&range=1d'
+  );
+}
+
+function buildCorsProxyYahooChartUrl(ticker) {
+  return (
+    'https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/' +
+    encodeURIComponent(ticker) +
+    '?interval=1d&range=1d'
+  );
+}
+
+function buildYahooQuoteV7Url(ticker) {
+  return (
+    'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' +
+    encodeURIComponent(ticker)
+  );
+}
+
+/** Smaller Yahoo payload; often works when chart v8 fails through proxies. */
+function parseV7Quote(data, ticker) {
+  if (!data || data.error) return null;
+  const r = data?.quoteResponse?.result?.[0];
+  if (!r) return null;
+
+  const prev =
+    r.regularMarketPreviousClose != null
+      ? Number(r.regularMarketPreviousClose)
+      : NaN;
+
+  let price = NaN;
+  if (r.regularMarketPrice != null) price = Number(r.regularMarketPrice);
+  else if (r.postMarketPrice != null) price = Number(r.postMarketPrice);
+  else if (r.preMarketPrice != null) price = Number(r.preMarketPrice);
+
+  if (Number.isNaN(price) && !Number.isNaN(prev) && r.regularMarketChange != null) {
+    price = prev + Number(r.regularMarketChange);
+  }
+  if (Number.isNaN(price)) return null;
+
+  let changePercent =
+    r.regularMarketChangePercent != null ? Number(r.regularMarketChangePercent) : NaN;
+  let change = r.regularMarketChange != null ? Number(r.regularMarketChange) : NaN;
+
+  if (Number.isNaN(changePercent) && !Number.isNaN(prev) && prev !== 0) {
+    changePercent = ((price - prev) / prev) * 100;
+  }
+  if (Number.isNaN(change) && !Number.isNaN(prev)) {
+    change = price - prev;
+  }
+  // Yahoo sometimes omits previousClose but includes change; derive % from implied prior close.
+  if (Number.isNaN(changePercent) && !Number.isNaN(change) && !Number.isNaN(price)) {
+    const impliedPrev = price - change;
+    if (!Number.isNaN(impliedPrev) && impliedPrev !== 0) {
+      changePercent = (change / impliedPrev) * 100;
+    }
+  }
+  if (Number.isNaN(changePercent)) {
+    changePercent = 0;
+    if (Number.isNaN(change)) change = 0;
+  }
+
+  return {
+    na: false,
+    name: r.shortName || r.longName || r.displayName || r.symbol || ticker,
+    price,
+    change: Number.isNaN(change) ? 0 : change,
+    changePercent,
+    volume: r.regularMarketVolume || 0
+  };
+}
+
+function parseChartMetaToQuote(data, ticker) {
+  if (!data || data.error) return null;
+  const result = data?.chart?.result?.[0];
+  if (!result) return null;
+  const meta = result.meta;
+  if (!meta) return null;
+
+  const quote = result.indicators?.quote?.[0];
+  const closes = quote?.close || [];
+  let lastBarClose = null;
+  for (let i = closes.length - 1; i >= 0; i--) {
+    if (closes[i] != null && !Number.isNaN(Number(closes[i]))) {
+      lastBarClose = Number(closes[i]);
+      break;
+    }
+  }
+
+  const rawPrev =
+    meta.chartPreviousClose != null
+      ? meta.chartPreviousClose
+      : meta.previousClose != null
+        ? meta.previousClose
+        : meta.regularMarketPreviousClose != null
+          ? meta.regularMarketPreviousClose
+          : null;
+  let previousClose =
+    rawPrev != null && rawPrev !== '' ? Number(rawPrev) : NaN;
+
+  const priceCandidate =
+    meta.regularMarketPrice != null
+      ? Number(meta.regularMarketPrice)
+      : meta.postMarketPrice != null
+        ? Number(meta.postMarketPrice)
+        : meta.preMarketPrice != null
+          ? Number(meta.preMarketPrice)
+          : lastBarClose != null
+            ? lastBarClose
+            : NaN;
+
+  if (Number.isNaN(previousClose) || previousClose === 0) {
+    const idx = [];
+    for (let i = 0; i < closes.length; i++) {
+      if (closes[i] != null && !Number.isNaN(Number(closes[i]))) idx.push(i);
+    }
+    if (idx.length >= 2) {
+      const prevBar = Number(closes[idx[idx.length - 2]]);
+      if (!Number.isNaN(prevBar) && prevBar !== 0) previousClose = prevBar;
+    }
+  }
+
+  if (
+    Number.isNaN(priceCandidate) ||
+    Number.isNaN(previousClose) ||
+    previousClose === 0
+  ) {
+    return null;
+  }
+
+  const percentChange =
+    ((priceCandidate - previousClose) / previousClose) * 100;
+  const change = priceCandidate - previousClose;
+
+  return {
+    na: false,
+    name: meta.longName || meta.shortName || meta.symbol || ticker,
+    price: priceCandidate,
+    change,
+    changePercent: percentChange,
+    volume: meta.regularMarketVolume || 0
+  };
+}
+
+function isBadProxyPayload(data) {
+  if (!data || typeof data !== 'object') return true;
+  // corsproxy.io: { error: "..." }; Yahoo chart: { chart: { error: ... } } still has chart
+  if (
+    data.error &&
+    !data.chart &&
+    data.quoteResponse === undefined &&
+    data.quoteSummary === undefined
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Returns parsed JSON from Yahoo (any endpoint) or null. */
+async function fetchJsonThroughProxies(url) {
+  async function fetchWithTimeout(resourceUrl) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      return await fetch(resourceUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function fromTextResponse(response) {
+    if (!response.ok) return null;
+    const text = await response.text();
+    if (!text || text.trim().startsWith('<')) return null;
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return null;
+    }
+    if (isBadProxyPayload(data)) return null;
+    return data;
+  }
+
+  const attempts = [
+    async () => {
+      const u = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+      const response = await fetchWithTimeout(u);
+      if (!response.ok) return null;
+      const wrapped = await response.json();
+      if (!wrapped || !wrapped.contents) return null;
+      let data;
+      try {
+        data = JSON.parse(wrapped.contents);
+      } catch (e) {
+        return null;
+      }
+      if (isBadProxyPayload(data)) return null;
+      return data;
+    },
+    async () => {
+      const proxied = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      const response = await fetchWithTimeout(proxied);
+      return fromTextResponse(response);
+    },
+    async () => {
+      const thingproxy =
+        'https://thingproxy.freeboard.io/fetch/' + encodeURIComponent(url);
+      const response = await fetchWithTimeout(thingproxy);
+      return fromTextResponse(response);
+    },
+    async () => {
+      const proxyUrl =
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+      const response = await fetchWithTimeout(proxyUrl);
+      return fromTextResponse(response);
+    },
+    async () => {
+      const response = await fetchWithTimeout(url);
+      return fromTextResponse(response);
+    }
+  ];
+
+  for (const fn of attempts) {
+    try {
+      const data = await fn();
+      if (data) return data;
+    } catch (e) {
+      /* next */
+    }
+  }
+  return null;
+}
+
+/**
+ * Same-origin FastAPI `/api/stocks/price/{symbol}` (yfinance). Works when the UI is served with the backend; no-op on static-only hosts.
+ */
+async function fetchDailyStockQuoteFromBackend(ticker) {
+  try {
+    const url = '/api/stocks/price/' + encodeURIComponent(ticker);
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const price = Number(j.price);
+    if (Number.isNaN(price)) return null;
+    const prev =
+      j.previous_close != null && j.previous_close !== ''
+        ? Number(j.previous_close)
+        : NaN;
+    let changePercent =
+      j.change_percent != null ? Number(j.change_percent) : NaN;
+    let change = j.change != null ? Number(j.change) : NaN;
+    if (Number.isNaN(changePercent) && !Number.isNaN(prev) && prev !== 0) {
+      changePercent = ((price - prev) / prev) * 100;
+    }
+    if (Number.isNaN(change) && !Number.isNaN(prev)) {
+      change = price - prev;
+    }
+    if (Number.isNaN(changePercent) && !Number.isNaN(change) && !Number.isNaN(price)) {
+      const impliedPrev = price - change;
+      if (!Number.isNaN(impliedPrev) && impliedPrev !== 0) {
+        changePercent = (change / impliedPrev) * 100;
+      }
+    }
+    if (Number.isNaN(changePercent)) {
+      changePercent = 0;
+      if (Number.isNaN(change)) change = 0;
+    }
+    return {
+      na: false,
+      name: j.symbol || ticker,
+      price,
+      change: Number.isNaN(change) ? 0 : change,
+      changePercent,
+      volume: j.volume != null ? Number(j.volume) : 0
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Daily quote: backend when available, else v7 quote then v8 chart via proxies. Exposed on window.MarketData ASAP.
+ */
+async function fetchDailyStockQuote(ticker) {
+  const backend = await fetchDailyStockQuoteFromBackend(ticker);
+  if (backend && !backend.na) {
+    return backend;
+  }
+
+  // Primary static-host path requested: corsproxy.io + Yahoo chart v8.
+  try {
+    const response = await fetch(buildCorsProxyYahooChartUrl(ticker), {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const chartOut = parseChartMetaToQuote(data, ticker);
+      if (chartOut && !chartOut.na) return chartOut;
+    }
+  } catch (e) {
+    /* continue to fallback chain */
+  }
+
+  const v7 = await fetchJsonThroughProxies(buildYahooQuoteV7Url(ticker));
+  let out = v7 ? parseV7Quote(v7, ticker) : null;
+  if (out && !out.na) {
+    return out;
+  }
+
+  const chart = await fetchJsonThroughProxies(buildYahooChartUrl(ticker));
+  out = chart ? parseChartMetaToQuote(chart, ticker) : null;
+  if (out && !out.na) {
+    return out;
+  }
+
+  return { na: true };
+}
+
+window.MarketData = window.MarketData || {};
+window.MarketData.fetchDailyStockQuote = fetchDailyStockQuote;
+
 const MARKET_INDICES = [
   { symbol: 'ES=F', name: 'S&P Futures', type: 'futures' },
   { symbol: 'YM=F', name: 'Dow Futures', type: 'futures' },
@@ -262,22 +598,22 @@ async function updateMostActive() {
   updateTopLosers();
   updateMostActive();
   
-  // Refresh every 30 seconds
+  // Refresh every 60 seconds (aligned with stock card updates)
   setInterval(() => {
     updateMarketIndices();
     updateTopGainers();
     updateTopLosers();
     updateMostActive();
-  }, 30000);
+  }, 60000);
 })();
 
-// Export for use in other pages
-window.MarketData = {
+// Export for use in other pages (fetchDailyStockQuote was set earlier)
+Object.assign(window.MarketData, {
   updateIndices: updateMarketIndices,
   updateGainers: updateTopGainers,
   updateLosers: updateTopLosers,
   updateActive: updateMostActive
-};
+});
 
 
 

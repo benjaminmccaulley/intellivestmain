@@ -15,7 +15,13 @@
   <header class="site-header">
     <div class="container header-inner">
       <a href="./index.html" class="brand">
-        <img src="./assets/logo.png" alt="Intellivest logo" class="brand-logo" />
+        <img src="intellivest-logo.png" 
+             alt="IntelliVest Logo" 
+             style="height: 40px; 
+                    width: auto; 
+                    filter: invert(1) brightness(2);
+                    cursor: pointer;"
+             onclick="window.location='index.html'">
         <div class="brand-text">
           <div class="brand-line">Intellivest</div>
           <div class="brand-sub">@ Texas A&M</div>
@@ -23,6 +29,9 @@
       </a>
 
       <nav class="primary-nav">
+        <div class="nav-dropdown">
+          <a href="./index.html" class="nav-link">Home</a>
+        </div>
         <div class="nav-dropdown">
           <a href="./about-us.html" class="nav-link">About us</a>
         </div>
@@ -37,6 +46,12 @@
         </div>
         <div class="nav-dropdown">
           <a href="./stocks.html" class="nav-link">Stocks</a>
+        </div>
+        <div class="nav-dropdown">
+          <a href="./stock-tracker.html" class="nav-link">Watchlist</a>
+        </div>
+        <div class="nav-dropdown">
+          <a href="./education.html" class="nav-link">Education</a>
         </div>
       </nav>
 
@@ -105,6 +120,7 @@
   </footer>
 
   <script src="./app.js"></script>
+  <script src="./auth-ui.js"></script>
 </body>
 </html>
 

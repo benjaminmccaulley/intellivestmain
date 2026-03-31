@@ -23,6 +23,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API routes must register before mounting "/" so /api/* is not swallowed by StaticFiles
+app.include_router(stock_routes.router, prefix="/api/stocks", tags=["stocks"])
+app.include_router(crypto_routes.router, prefix="/api/crypto", tags=["crypto"])
+app.include_router(news_routes.router, prefix="/api/news", tags=["news"])
+
 # Serve static frontend assets (for both uvicorn and standalone static servers)
 if FRONTEND_DIR.exists():
     app.mount(
@@ -30,11 +35,6 @@ if FRONTEND_DIR.exists():
         StaticFiles(directory=FRONTEND_DIR, html=True),
         name="frontend",
     )
-
-# Include routers (must be before static mount so /api/* takes precedence)
-app.include_router(stock_routes.router, prefix="/api/stocks", tags=["stocks"])
-app.include_router(crypto_routes.router, prefix="/api/crypto", tags=["crypto"])
-app.include_router(news_routes.router, prefix="/api/news", tags=["news"])
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
