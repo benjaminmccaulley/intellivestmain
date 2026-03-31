@@ -315,22 +315,42 @@
       }
     };
 
-    function detectTickerSymbol(userMessage) {
-      const match = String(userMessage || '').toUpperCase().match(/\b[A-Z]{1,5}\b/g);
-      if (!match) return null;
-      const skip = new Set(['ETF', 'IRA', 'HYSA', 'CD', 'I', 'IV', 'AND', 'THE']);
-      for (const token of match) {
-        if (!skip.has(token)) return token;
-      }
-      return null;
+    function isStockTicker(message) {
+      const tickerPattern = /\b\$?[A-Z]{1,5}\b/g;
+      const commonWords = [
+        'I', 'A', 'MY', 'IN', 'IT', 'BE', 'DO', 'GO', 'ME', 'NO', 'OR', 'SO', 'TO',
+        'UP', 'US', 'WE', 'AM', 'AN', 'AS', 'AT', 'BY', 'HE', 'IF', 'IS', 'OF', 'ON', 'TV', 'OK', 'AI',
+        'HOW', 'CAN', 'YOU', 'THE', 'AND', 'FOR', 'ARE', 'NOT', 'GET', 'HAS', 'HAD', 'HIM', 'HIS', 'WAS',
+        'WHO', 'DID', 'ITS', 'LET', 'MAY', 'NEW', 'NOW', 'OLD', 'OWN', 'SAY', 'SHE', 'TOO', 'USE', 'WAY',
+        'WHAT', 'WHEN', 'WILL', 'WITH', 'HAVE', 'FROM', 'THEY', 'THAT', 'THIS', 'BEEN', 'WERE', 'SAID',
+        'EACH', 'MAKE', 'LIKE', 'INTO', 'THAN', 'THEN', 'TIME', 'LOOK', 'ALSO', 'BACK', 'JUST', 'COME',
+        'GOOD', 'KNOW', 'ONLY', 'OVER', 'SUCH', 'WELL', 'WANT', 'GIVE', 'MOST', 'TELL', 'VERY', 'EVEN',
+        'SAVE', 'MONEY'
+      ];
+      const matches = String(message || '').toUpperCase().match(tickerPattern);
+      if (!matches) return null;
+      const tickers = matches.filter(m => !commonWords.includes(m.replace('$', '')));
+      return tickers.length > 0 ? tickers[0].replace('$', '') : null;
     }
 
     async function fetchLiveTickerData(symbol) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       const url =
         'https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/' +
         encodeURIComponent(symbol) +
         '?interval=1d&range=1d';
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      let res;
+      try {
+        res = await fetch(url, {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal
+        });
+      } catch (e) {
+        clearTimeout(timeoutId);
+        throw e;
+      }
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error('live quote unavailable');
       const data = await res.json();
       const result = data?.chart?.result?.[0];
@@ -368,42 +388,8 @@
       return 'A balanced approach is to limit single-stock exposure and pair it with diversified ETFs like VTI and VXUS.';
     }
 
-    async function generateResponse(userMessage) {
+    function generateKnowledgeBaseResponse(userMessage) {
       const lowerMessage = userMessage.toLowerCase().trim();
-      const profile = getSurveyProfile();
-      const maybeTicker = detectTickerSymbol(userMessage);
-      if (maybeTicker && /stock|ticker|buy|sell|doing|price|should i/i.test(lowerMessage)) {
-        try {
-          const live = await fetchLiveTickerData(maybeTicker);
-          const up = live.pct >= 0;
-          const moveLine = (up ? '🟢 ▲ +' : '🔴 ▼ ') + live.pct.toFixed(2) + '%';
-          return (
-            maybeTicker +
-            ' live snapshot:\n' +
-            '• Current price: $' +
-            live.price.toFixed(2) +
-            '\n' +
-            '• Daily change: ' +
-            moveLine +
-            '\n' +
-            '• 52-week high: ' +
-            (live.high52 != null && !Number.isNaN(live.high52) ? '$' + live.high52.toFixed(2) : 'N/A') +
-            '\n' +
-            '• 52-week low: ' +
-            (live.low52 != null && !Number.isNaN(live.low52) ? '$' + live.low52.toFixed(2) : 'N/A') +
-            '\n\n' +
-            buildRiskAdviceForTicker(maybeTicker, live.pct, profile)
-          );
-        } catch (e) {
-          return (
-            "I couldn't load live data for " +
-            maybeTicker +
-            ' right now, but here is what I know about it generally:\n' +
-            buildRiskAdviceForTicker(maybeTicker, 0, profile)
-          );
-        }
-      }
-
       if (financialKnowledge.greeting.keywords.some(kw => lowerMessage.includes(kw))) {
         if (surveyDone()) return buildWelcomeAfterSurvey();
         if (surveySkipped()) return defaultWelcome();
@@ -434,6 +420,38 @@
 
       response = tailorResponse(response, userMessage, category);
       return response;
+    }
+
+    async function generateResponse(userMessage) {
+      const profile = getSurveyProfile();
+      const ticker = isStockTicker(userMessage);
+      if (ticker) {
+        try {
+          const live = await fetchLiveTickerData(ticker);
+          const up = live.pct >= 0;
+          const moveLine = (up ? '🟢 ▲ +' : '🔴 ▼ ') + live.pct.toFixed(2) + '%';
+          return (
+            ticker +
+            ' live snapshot:\n' +
+            '• Current price: $' +
+            live.price.toFixed(2) +
+            '\n' +
+            '• Daily change: ' +
+            moveLine +
+            '\n' +
+            '• 52-week high: ' +
+            (live.high52 != null && !Number.isNaN(live.high52) ? '$' + live.high52.toFixed(2) : 'N/A') +
+            '\n' +
+            '• 52-week low: ' +
+            (live.low52 != null && !Number.isNaN(live.low52) ? '$' + live.low52.toFixed(2) : 'N/A') +
+            '\n\n' +
+            buildRiskAdviceForTicker(ticker, live.pct, profile)
+          );
+        } catch (e) {
+          return generateKnowledgeBaseResponse(userMessage);
+        }
+      }
+      return generateKnowledgeBaseResponse(userMessage);
     }
 
     function addMessage(text, isUser = false) {
@@ -528,7 +546,9 @@
           addMessage(userMessage, true);
           chatbotInput.value = '';
           showTypingIndicator();
-          await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 700));
+          await new Promise(resolve =>
+            setTimeout(resolve, Math.min(500, Math.floor(200 + Math.random() * 301)))
+          );
           removeTypingIndicator();
           addMessage(await generateResponse(userMessage), false);
         });

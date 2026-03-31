@@ -63,8 +63,17 @@ body {
   filter: brightness(0) saturate(100%);
   object-fit: contain;
 }
+.nav-logo {
+  display: block;
+  filter: brightness(0) saturate(100%);
+  object-fit: contain;
+}
 .dark .brand-logo { filter: brightness(0) saturate(100%) invert(1); }
+.dark .nav-logo { filter: brightness(0) saturate(100%) invert(1); }
 .brand-logo:not([src]), .brand-logo[src=""], .brand-logo[src*="undefined"] {
+  display: none;
+}
+.nav-logo:not([src]), .nav-logo[src=""], .nav-logo[src*="undefined"] {
   display: none;
 }
 .brand-text { display: grid; line-height: 1.05; }
