@@ -31,6 +31,9 @@
 
       <nav class="primary-nav">
         <div class="nav-dropdown">
+          <a href="./index.html" class="nav-link">Home</a>
+        </div>
+        <div class="nav-dropdown">
           <a href="./about-us.html" class="nav-link">About us</a>
         </div>
         <div class="nav-dropdown">
@@ -47,6 +50,9 @@
         </div>
         <div class="nav-dropdown">
           <a href="./stock-tracker.html" class="nav-link active">Watchlist</a>
+        </div>
+        <div class="nav-dropdown">
+          <a href="./education.html" class="nav-link">Education</a>
         </div>
       </nav>
 
@@ -86,13 +92,10 @@
 
   <main class="stock-tracker-main">
     <div class="container">
-      <nav class="tracker-nav">
-        <button class="nav-btn active" id="watchlistBtn" data-view="watchlist">Watchlist</button>
-        <button class="nav-btn" id="educationBtn" data-view="education">Education</button>
-      </nav>
-
-      <!-- Watchlist View -->
       <div id="watchlistView" class="view-container active">
+        <div class="disclaimer-banner">
+          <strong>📚 Looking to learn?</strong> <a href="./education.html" class="link">Visit our Education Hub →</a>
+        </div>
         <section class="search-section">
           <div class="search-container">
             <input 
@@ -126,101 +129,6 @@
         </section>
       </div>
 
-      <!-- Education View -->
-      <div id="educationView" class="view-container">
-        <div class="disclaimer-banner">
-          <strong>⚠️ Disclaimer:</strong> The information on this site is for educational purposes only and does not constitute financial, investment, or trading advice.
-        </div>
-
-        <section class="wt-edu-section">
-          <div class="wt-edu-grid">
-            <article class="wt-edu-card">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">📊</span> <strong>Budgeting</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li>List monthly income (job, aid, support) and all expenses</li>
-                <li>Try the 50/30/20 split: needs / wants / savings + debt repayment</li>
-                <li>Track spending for at least 30 days to see where money goes</li>
-                <li>Automate transfers to savings so you pay yourself first</li>
-              </ul>
-            </article>
-            <article class="wt-edu-card">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">🏦</span> <strong>Saving</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li>Start with a small emergency fund (e.g. $500–$1,000), then grow to 3–6 months of expenses</li>
-                <li>Keep emergency cash in a separate savings account</li>
-                <li>Consider high-yield savings for money you need in the next few years</li>
-                <li>Save windfalls (tax refunds, bonuses) instead of spending them all</li>
-              </ul>
-            </article>
-            <article class="wt-edu-card">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">💳</span> <strong>Credit Score</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li>Payment history is a major factor — never miss a payment</li>
-                <li>Keep balances low vs. credit limits (utilization)</li>
-                <li>Length of history matters — avoid closing your oldest card without a reason</li>
-                <li>Review your credit reports annually for mistakes</li>
-              </ul>
-            </article>
-            <article class="wt-edu-card">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">📈</span> <strong>Stocks &amp; ETFs</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li>A <strong>stock</strong> (share/equity) is a small ownership stake in a company</li>
-                <li><strong>IPO</strong>: company sells shares to the public to raise money</li>
-                <li>After the IPO, shares trade on exchanges (e.g. NYSE, Nasdaq)</li>
-                <li>Prices move with supply and demand; more buyers than sellers often pushes price up</li>
-                <li>Investors can earn via <strong>capital gains</strong> (sell higher than you bought) or <strong>dividends</strong> (cash payouts)</li>
-                <li>Prices react to earnings, news, sentiment, industry, and global events</li>
-                <li><strong>Bull market</strong>: broad period of rising prices; <strong>Bear market</strong>: broad declines</li>
-                <li><strong>Volatility</strong>: how much prices swing; <strong>Diversification</strong>: spread risk across many investments</li>
-                <li>ETFs often hold many stocks in one fund and trade like a single stock</li>
-                <li><strong>P/E ratio</strong> = price ÷ earnings per share (valuation clue)</li>
-                <li>High P/E can mean growth expectations — or overvaluation</li>
-                <li>Low P/E can mean value — or lower growth expectations</li>
-                <li>Example: $100 price and $5 EPS → P/E of 20</li>
-                <li><strong>Dividend yield</strong> = annual dividend ÷ stock price</li>
-                <li><strong>Volume</strong>: shares traded in a period; higher often means more liquidity</li>
-                <li><strong>52-week high/low</strong>: yearly range for context</li>
-                <li>Chart basics: <strong>Open, High, Low, Close</strong>, and <strong>Change %</strong></li>
-              </ul>
-            </article>
-            <article class="wt-edu-card">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">🏛️</span> <strong>Mutual Funds</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li><strong>Market cap</strong> = stock price × shares outstanding</li>
-                <li>Categories: Large-cap ($10B+), Mid-cap ($2–10B), Small-cap (under $2B)</li>
-                <li>Market cap hints at company size and risk/return tradeoffs</li>
-                <li><strong>Mutual funds</strong> pool money from many investors; often actively managed or indexed</li>
-                <li>Compare expense ratios (fees) when choosing funds</li>
-              </ul>
-            </article>
-            <article class="wt-edu-card">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">🌅</span> <strong>Retirement</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li>Contribute enough to get any full employer 401(k) match</li>
-                <li>Consider Roth vs Traditional IRA based on your tax situation</li>
-                <li>Increase savings rate over time (especially after raises)</li>
-                <li>General habits: start early, diversify, long-term focus, research investments, manage risk, avoid emotional trading</li>
-              </ul>
-            </article>
-            <article class="wt-edu-card wt-edu-card-wide">
-              <div class="wt-edu-card-head"><span class="wt-edu-emoji">🏠</span> <strong>Buying a House</strong></div>
-              <hr class="wt-edu-rule" />
-              <ul>
-                <li>Plan for down payment, closing costs, moving, and a repair buffer</li>
-                <li>Stronger credit can help you qualify for better mortgage rates</li>
-                <li>Lenders review debt-to-income — reduce high-interest debt when possible</li>
-                <li>Compare multiple lenders and loan types (fixed vs ARM)</li>
-              </ul>
-            </article>
-          </div>
-        </section>
-      </div>
     </div>
   </main>
 
